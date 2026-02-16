@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RACC-Reaction Driver</title>
+    <style>
+      body {
+        margin: 0;
+        background: #222;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      canvas {
+        border: 3px solid white;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="320" height="480"></canvas>
+    <script src>
+      "game.js"
+    </script>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      let speed = 3;
+      const player = {
+        x: canvas.width / 2 - 16,
+        y: canvas.height - 100,
+        width: 32,
+        height: 64,
+        color: "red",
+        vx: 0,
+      };
+      const keys = {};
+
+      document.addEventListener("keydown", (e) => (keys[e.key] = true));
+      document.addEventListener("keyup", (e) => (keys[e.key] = false));
+      ctx.fillStyle = "lightgray";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "red";
+      ctx.fillRect(140, 100, 40, 80);
+      function update() {
+        if (keys["ArrowLeft"]) player.x -= 4;
+        if (keys["ArrowRight"]) player.x += 4;
+        if (player.x < 60) player.x = 60;
+        if (player.x + player.width > canvas.width - 60)
+        player.x = canvas.width - 60 - player.width;
+      }
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#444";
+        ctx.fillRect(60, 0, canvas.width - 120, canvas.height);
+        ctx.fillStyle = "white";
+        ctx.fillRect(58, 0, 4, canvas.height);
+        ctx.fillStyle = player.color;
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+      }
+      function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+      }
+
+      loop();
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowUp") {
+        }
+      });
+    </script>
+  </body>
+</html>
