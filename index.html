@@ -21,9 +21,7 @@
   </head>
   <body>
     <canvas id="gameCanvas" width="320" height="480"></canvas>
-    <script src>
-      "game.js"
-    </script>
+    <script src="game.js"></script>
     <script>
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
@@ -50,6 +48,15 @@
         if (player.x < 60) player.x = 60;
         if (player.x + player.width > canvas.width - 60)
         player.x = canvas.width - 60 - player.width;
+        enemies.forEach((e) => {
+            e.y += e.speed;
+        });
+        enemies.forEach((e) => {
+            if (collide(player, e)) {
+                alert("¡Choque!");
+                location.reload();
+            }
+        });
       }
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -61,7 +68,7 @@
         ctx.fillRect(player.x, player.y, player.width, player.height);
       }
       function loop() {
-        update();
+        update()
         draw();
         requestAnimationFrame(loop);
       }
@@ -71,6 +78,41 @@
         if (e.key === "ArrowUp") {
         }
       });
+      const carImg = new Image();
+      carImg.src = "/images/coche1.png";
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width - 120, canvas.height);
+        ctx.fillStyle = "#444";
+        ctx.fillRect(60, 0, canvas.width - 120, canvas.height);
+
+        ctx.fillStyle = "white";
+        ctx.fillRect(58, 0, 4, canvas.height);
+        ctx.fillRect(canvas.width - 62, 0, 4, canvas.height);
+        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+      }
+      const enemies = [];
+
+      function spawnEnemy() {
+        enemies.push({
+            x: 60 + Math.random() * (canvas.width - 120 - 32),
+            y: -100,
+            width: 32,
+            height: 64,
+            speed: 3 + Math.random() * 2,
+        });
+      }
+
+      setInterval(spawnEnemy, 1200);
+
+      function collide(a, b) {
+        return (
+            a.x < b.x + b.width &&
+            a.x + a.width > b.x &&
+            a.y < b.y + b.height &&
+            a.y + a.height > b.y
+        );
+      }
     </script>
   </body>
 </html>
