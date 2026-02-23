@@ -20,99 +20,52 @@
     </style>
   </head>
   <body>
-    <canvas id="gameCanvas" width="320" height="480"></canvas>
-    <script src="game.js"></script>
+    <canvas id="gameCanvas" width="480" height="320"></canvas>
     <script>
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
-      let speed = 3;
+      const bgImg = new Image();
+      bgImg.src = "/images/fondo.png";
+      let bgX = 0;
+      let speed = 2;
+      const carImg = new Image();
+      carImg.src = "/images/coche_transparente.png";
       const player = {
-        x: canvas.width / 2 - 16,
-        y: canvas.height - 100,
-        width: 32,
-        height: 64,
-        color: "red",
-        vx: 0,
+        x: 100,
+        y: canvas.height / 2 - 16,
+        width: 64,
+        height: 32,
       };
       const keys = {};
-
       document.addEventListener("keydown", (e) => (keys[e.key] = true));
       document.addEventListener("keyup", (e) => (keys[e.key] = false));
-      ctx.fillStyle = "lightgray";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "red";
-      ctx.fillRect(140, 100, 40, 80);
       function update() {
-        if (keys["ArrowLeft"]) player.x -= 4;
-        if (keys["ArrowRight"]) player.x += 4;
-        if (player.x < 60) player.x = 60;
-        if (player.x + player.width > canvas.width - 60)
-        player.x = canvas.width - 60 - player.width;
-        enemies.forEach((e) => {
-            e.y += e.speed;
-        });
-        enemies.forEach((e) => {
-            if (collide(player, e)) {
-                alert("¡Choque!");
-                location.reload();
-            }
-        });
+        bgX += speed;
+        if (bgX >= canvas.width) bgX = 0;
+        if (keys["ArrowUp"]) player.y -= 4;
+        if (keys["ArrowDown"]) player.y += 4;
+        if (player.y < 0) player.y = 0;
+        if (player.y + player.height > canvas.height)
+          player.y = canvas.height - player.height;
       }
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#444";
-        ctx.fillRect(60, 0, canvas.width - 120, canvas.height);
-        ctx.fillStyle = "white";
-        ctx.fillRect(58, 0, 4, canvas.height);
-        ctx.fillStyle = player.color;
-        ctx.fillRect(player.x, player.y, player.width, player.height);
+        ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
+        ctx.drawImage(
+          bgImg,
+          canvas.width - bgX,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
       }
       function loop() {
-        update()
+        update();
         draw();
         requestAnimationFrame(loop);
       }
-
       loop();
-      document.addEventListener("keydown", function (e) {
-        if (e.key === "ArrowUp") {
-        }
-      });
-      const carImg = new Image();
-      carImg.src = "/images/coche1.png";
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width - 120, canvas.height);
-        ctx.fillStyle = "#444";
-        ctx.fillRect(60, 0, canvas.width - 120, canvas.height);
-
-        ctx.fillStyle = "white";
-        ctx.fillRect(58, 0, 4, canvas.height);
-        ctx.fillRect(canvas.width - 62, 0, 4, canvas.height);
-        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
-      }
-      const enemies = [];
-
-      function spawnEnemy() {
-        enemies.push({
-            x: 60 + Math.random() * (canvas.width - 120 - 32),
-            y: -100,
-            width: 32,
-            height: 64,
-            speed: 3 + Math.random() * 2,
-        });
-      }
-
-      setInterval(spawnEnemy, 1200);
-
-      function collide(a, b) {
-        return (
-            a.x < b.x + b.width &&
-            a.x + a.width > b.x &&
-            a.y < b.y + b.height &&
-            a.y + a.height > b.y
-        );
-      }
     </script>
   </body>
 </html>
