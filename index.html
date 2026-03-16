@@ -16,55 +16,36 @@
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
 
-      // Tamaño de coches aumentado
+      // Tamaños de elementos
       const CAR_WIDTH = 160; 
       const CAR_HEIGHT = 80;
+      const TREE_WIDTH = 150;
+      const TREE_HEIGHT = 180;
+      const CONE_WIDTH = 60;
+      const CONE_HEIGHT = 70;
 
       function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        prepareBackground();
         player.y = canvas.height / 2 - CAR_HEIGHT / 2;
         drawSpeedometerStatic();
       }
       window.addEventListener("resize", resizeCanvas);
 
       // --- IMÁGENES ---
-      const bgImg = new Image();
-      bgImg.src = "images/fondo.png"; 
-      let bgReady = false;
-      bgImg.onload = () => { bgReady = true; prepareBackground(); };
-
-      const carImg = new Image();
+      const bgImg = new Image(); 
+      bgImg.src = "images/fondo.png"; // Usando tu imagen de fondo
+      
+      const carImg = new Image(); 
       carImg.src = "images/coche_transparente.png";
+      
+      const treeImg = new Image(); 
+      treeImg.src = "images/arbol.png";
+      
+      const coneImg = new Image(); 
+      coneImg.src = "images/cono.png";
 
-      // --- FONDO ---
-      const bgCanvas = document.createElement("canvas");
-      const bgCtx = bgCanvas.getContext("2d");
-
-      function prepareBackground() {
-        bgCanvas.width = canvas.width;
-        bgCanvas.height = canvas.height;
-        
-        if (bgReady) {
-          bgCtx.drawImage(bgImg, 0, 0, bgCanvas.width, bgCanvas.height);
-        } else {
-          bgCtx.fillStyle = "#2d5a27"; 
-          bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-          bgCtx.fillStyle = "#444"; 
-          const roadH = 350;
-          bgCtx.fillRect(0, canvas.height/2 - roadH/2, bgCanvas.width, roadH);
-          bgCtx.strokeStyle = "#fff";
-          bgCtx.setLineDash([30, 30]);
-          bgCtx.lineWidth = 4;
-          bgCtx.beginPath();
-          bgCtx.moveTo(0, canvas.height/2);
-          bgCtx.lineTo(bgCanvas.width, canvas.height/2);
-          bgCtx.stroke();
-        }
-      }
-
-      // --- LÓGICA ---
+      // --- LÓGICA DE JUEGO ---
       let speed = 2; 
       const MAX_SPEED = 20; 
       let needleAngleSmooth = Math.PI;
@@ -72,26 +53,33 @@
 
       const player = { x: 100, y: 300, width: CAR_WIDTH, height: CAR_HEIGHT };
       const enemies = [];
+      const obstacles = [];
 
       function spawnEnemy() {
-        if (enemies.length >= 6) return;
+        if (enemies.length >= 4) return;
         const lane = Math.random() < 0.5 ? canvas.height/2 - 140 : canvas.height/2 + 50;
-        
-        enemies.push({
-          x: canvas.width + 200,
-          y: lane,
-          width: CAR_WIDTH,
-          height: CAR_HEIGHT,
-          speed: speed + Math.random() * 5 + 3
-        });
+        enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 4 });
       }
-      setInterval(spawnEnemy, 1500);
 
-      // --- VELOCÍMETRO ESTÁTICO ---
+      function spawnObstacle() {
+        if (obstacles.length >= 10) return;
+        const isTree = Math.random() < 0.6;
+        let yPos;
+        if (isTree) {
+          yPos = Math.random() < 0.7 ? Math.random() * (canvas.height/2 - 250) : canvas.height - 200;
+        } else {
+          yPos = Math.random() < 0.5 ? canvas.height/2 - 225 : canvas.height/2 + 160;
+        }
+        obstacles.push({ x: canvas.width + 200, y: yPos, width: isTree ? TREE_WIDTH : CONE_WIDTH, height: isTree ? TREE_HEIGHT : CONE_HEIGHT, img: isTree ? treeImg : coneImg });
+      }
+
+      setInterval(spawnEnemy, 2500);
+      setInterval(spawnObstacle, 1500);
+
+      // --- VELOCÍMETRO (ESTÁTICO) ---
       const speedoCanvas = document.createElement("canvas");
       const speedoCtx = speedoCanvas.getContext("2d");
-      speedoCanvas.width = 300;
-      speedoCanvas.height = 200;
+      speedoCanvas.width = 300; speedoCanvas.height = 200;
 
       function drawSpeedometerStatic() {
         const c = speedoCtx;
@@ -99,15 +87,6 @@
         const centerY = 180;
         const radius = 100;
         c.clearRect(0, 0, speedoCanvas.width, speedoCanvas.height);
-        
-        const gradient = c.createRadialGradient(centerX, centerY, 20, centerX, centerY, radius + 40);
-        gradient.addColorStop(0, "rgba(255,255,255,0.15)");
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
-        c.fillStyle = gradient;
-        c.beginPath();
-        c.arc(centerX, centerY, radius + 40, Math.PI, 2 * Math.PI);
-        c.fill();
-
         c.beginPath();
         c.lineWidth = 6;
         c.strokeStyle = "#ffffff";
@@ -121,7 +100,6 @@
           c.moveTo(centerX + Math.cos(angle)*92, centerY + Math.sin(angle)*92);
           c.lineTo(centerX + Math.cos(angle)*100, centerY + Math.sin(angle)*100);
           c.stroke();
-          
           c.fillStyle = "white";
           c.font = "bold 14px Arial";
           c.textAlign = "center";
@@ -129,9 +107,17 @@
         }
       }
 
+      function checkCollision(r1, r2) {
+        return r1.x < r2.x + r2.width * 0.8 &&
+               r1.x + r1.width * 0.8 > r2.x &&
+               r1.y < r2.y + r2.height * 0.8 &&
+               r1.y + r1.height * 0.8 > r2.y;
+      }
+
       function update() {
-        const roadTop = canvas.height / 2 - 175;
-        const roadBottom = canvas.height / 2 + 175;
+        // Asumiendo que en fondo.png la carretera está en el centro (aprox 400px de ancho)
+        const roadTop = canvas.height / 2 - 200;
+        const roadBottom = canvas.height / 2 + 200;
         const playerCenterY = player.y + player.height / 2;
 
         if (playerCenterY < roadTop || playerCenterY > roadBottom) {
@@ -141,49 +127,51 @@
             speed += 0.008; 
         }
 
-        bgX += speed * 4;
+        bgX += speed * 5;
         if (bgX >= canvas.width) bgX = 0;
 
-        if (keys["ArrowUp"]) player.y -= 7;
-        if (keys["ArrowDown"]) player.y += 7;
+        if (keys["ArrowUp"]) player.y -= 8;
+        if (keys["ArrowDown"]) player.y += 8;
         if (keys["ArrowLeft"]) speed = Math.max(1, speed - 0.2);
         if (keys["ArrowRight"]) speed = Math.min(MAX_SPEED, speed + 0.15);
 
         speed = Math.min(speed, MAX_SPEED);
 
-        if (player.y < 0) player.y = 0;
-        if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
-
-        for (let i = enemies.length - 1; i >= 0; i--) {
-          enemies[i].x -= enemies[i].speed;
-          if (enemies[i].x + enemies[i].width < -200) enemies.splice(i, 1);
-        }
+        [enemies, obstacles].forEach(list => {
+          for (let i = list.length - 1; i >= 0; i--) {
+            list[i].x -= speed + (list[i].speed || 0);
+            if (checkCollision(player, list[i])) {
+              speed = 1.5;
+              list.splice(i, 1);
+              continue;
+            }
+            if (list[i].x < -300) list.splice(i, 1);
+          }
+        });
       }
 
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgCanvas, -bgX, 0);
-        ctx.drawImage(bgCanvas, canvas.width - bgX, 0);
-
-        // Dibujar Jugador
-        if (carImg.complete && carImg.naturalWidth !== 0) {
-          ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+        
+        // Fondo con imagen fondo.png
+        if (bgImg.complete) {
+          ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
+          ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
         }
 
-        // Dibujar Enemigos (usando la misma imagen transparente)
-        enemies.forEach(e => {
-          if (carImg.complete && carImg.naturalWidth !== 0) {
-            ctx.drawImage(carImg, e.x, e.y, e.width, e.height);
-          } else {
-            ctx.fillStyle = "#ff4444";
-            ctx.fillRect(e.x, e.y, e.width, e.height);
-          }
+        // Jugador y Enemigos
+        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+        enemies.forEach(e => ctx.drawImage(carImg, e.x, e.y, e.width, e.height));
+
+        // Obstáculos
+        obstacles.forEach(o => {
+          if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.width, o.height);
         });
 
-        // --- VELOCÍMETRO ---
+        // Velocímetro
         const centerX = 150;
-        const centerY = canvas.height - 20; 
-        ctx.drawImage(speedoCanvas, 0, canvas.height - 200);
+        const centerY = canvas.height - 130; 
+        ctx.drawImage(speedoCanvas, 0, canvas.height - 310);
         
         const targetAngle = Math.PI + (speed / MAX_SPEED) * Math.PI;
         needleAngleSmooth += (targetAngle - needleAngleSmooth) * 0.1;
@@ -198,21 +186,15 @@
         ctx.fillStyle = "white";
         ctx.font = "bold 24px Arial";
         ctx.textAlign = "center";
-        ctx.fillText(`${Math.floor(speed * 10)} km/h`, centerX, centerY - 10);
+        ctx.fillText(`${Math.floor(speed * 10)} km/h`, centerX, centerY + 35);
       }
 
       const keys = {};
       document.addEventListener("keydown", (e) => keys[e.key] = true);
       document.addEventListener("keyup", (e) => keys[e.key] = false);
 
-      function loop() {
-        update();
-        draw();
-        requestAnimationFrame(loop);
-      }
-
-      resizeCanvas();
-      loop();
+      function loop() { update(); draw(); requestAnimationFrame(loop); }
+      resizeCanvas(); loop();
     </script>
   </body>
 </html>
