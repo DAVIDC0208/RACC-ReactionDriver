@@ -12,59 +12,155 @@
         justify-content: center;
         align-items: center;
         height: 100vh;
+        overflow: hidden;
       }
       canvas {
         border: 3px solid white;
         image-rendering: pixelated;
+        display: block;
       }
     </style>
   </head>
   <body>
-    <canvas id="gameCanvas" width="480" height="320"></canvas>
+    <canvas id="gameCanvas"></canvas>
+
     <script>
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
+
+      function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
       const bgImg = new Image();
       bgImg.src = "/images/fondo.png";
       let bgX = 0;
+
       let speed = 2;
+      let speedDisplay = 0;
+      const MAX_SPEED = 15;
+
       const carImg = new Image();
       carImg.src = "/images/coche_transparente.png";
+
       const player = {
         x: 100,
-        y: canvas.height / 2 - 16,
-        width: 64,
-        height: 32,
+        y: canvas.height / 2 - 32,
+        width: 128,
+        height: 64,
       };
+
       const keys = {};
       document.addEventListener("keydown", (e) => (keys[e.key] = true));
       document.addEventListener("keyup", (e) => (keys[e.key] = false));
+
       function update() {
         bgX += speed;
         if (bgX >= canvas.width) bgX = 0;
-        if (keys["ArrowUp"]) player.y -= 4;
-        if (keys["ArrowDown"]) player.y += 4;
+
+        if (keys["ArrowUp"]) player.y -= 6;
+        if (keys["ArrowDown"]) player.y += 6;
+
+        if (keys["ArrowLeft"]) {
+          speed -= 0.05;
+          if (speed < 1) speed = 1;
+        }
+
+        if (keys["ArrowRight"]) {
+          speed += 0.05;
+        }
+
+        speed += 0.002;
+
+        if (speed > MAX_SPEED) speed = MAX_SPEED;
+
         if (player.y < 0) player.y = 0;
         if (player.y + player.height > canvas.height)
           player.y = canvas.height - player.height;
+
+        speedDisplay = Math.floor(speed * 10);
       }
+
+      function drawSpeedometer() {
+        const centerX = 150;
+        const centerY = canvas.height - 50;
+        const radius = 100;
+
+        // Dial semicircular
+        ctx.beginPath();
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = "#ffffff";
+        ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+        ctx.stroke();
+
+        // Marcas
+        for (let i = 0; i <= MAX_SPEED; i += 3) {
+          const angle = Math.PI + (i / MAX_SPEED) * Math.PI;
+          const x1 = centerX + Math.cos(angle) * (radius - 10);
+          const y1 = centerY + Math.sin(angle) * (radius - 10);
+          const x2 = centerX + Math.cos(angle) * radius;
+          const y2 = centerY + Math.sin(angle) * radius;
+
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+
+          // Números
+          const nx = centerX + Math.cos(angle) * (radius - 30);
+          const ny = centerY + Math.sin(angle) * (radius - 30);
+
+          ctx.fillStyle = "white";
+          ctx.font = "16px Arial";
+          ctx.fillText(i * 10, nx - 10, ny + 5);
+        }
+
+        // Aguja
+        const needleAngle = Math.PI + (speed / MAX_SPEED) * Math.PI;
+        const needleX = centerX + Math.cos(needleAngle) * (radius - 20);
+        const needleY = centerY + Math.sin(needleAngle) * (radius - 20);
+
+        ctx.strokeStyle = "red";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(needleX, needleY);
+        ctx.stroke();
+
+        // Centro de la aguja
+        ctx.fillStyle = "black";
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
+        ctx.fill();
+
+        // Texto digital
+        ctx.fillStyle = "white";
+        ctx.font = "22px Arial";
+        ctx.fillText(`${speedDisplay} km/h`, centerX - 40, centerY + 40);
+      }
+
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
         ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
-        ctx.drawImage(
-          bgImg,
-          canvas.width - bgX,
-          0,
-          canvas.width,
-          canvas.height,
-        );
+        ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
+
         ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+
+        drawSpeedometer();
       }
+
       function loop() {
         update();
         draw();
         requestAnimationFrame(loop);
       }
+
       loop();
     </script>
   </body>
