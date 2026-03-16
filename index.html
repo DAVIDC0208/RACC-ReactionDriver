@@ -5,20 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RACC-Reaction Driver</title>
     <style>
-      body {
-        margin: 0;
-        background: #222;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        overflow: hidden;
-      }
-      canvas {
-        border: 3px solid white;
-        image-rendering: pixelated;
-        display: block;
-      }
+      body { margin: 0; background: #222; overflow: hidden; }
+      canvas { display: block; image-rendering: pixelated; }
     </style>
   </head>
   <body>
@@ -28,132 +16,212 @@
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
 
+      const CAR_WIDTH = 110;
+      const CAR_HEIGHT = 100;
+
       function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
+        prepareBackground();
+        player.y = canvas.height / 2 - CAR_HEIGHT / 2;
+        drawSpeedometerStatic();
       }
-      resizeCanvas();
       window.addEventListener("resize", resizeCanvas);
 
+      // --- IMÁGENES ---
       const bgImg = new Image();
-      bgImg.src = "/images/fondo.png";
-      let bgX = 0;
-
-      let speed = 2;
-      let speedDisplay = 0;
-      const MAX_SPEED = 15;
+      bgImg.src = "images/fondo.png"; 
+      let bgReady = false;
+      bgImg.onload = () => { bgReady = true; prepareBackground(); };
 
       const carImg = new Image();
-      carImg.src = "/images/coche_transparente.png";
+      carImg.src = "images/coche_transparente.png";
+      const enemyImg = new Image();
+      enemyImg.src = "images/coche_enemigo.png";
 
-      const player = {
-        x: 100,
-        y: canvas.height / 2 - 32,
-        width: 128,
-        height: 64,
-      };
+      // --- FONDO ---
+      const bgCanvas = document.createElement("canvas");
+      const bgCtx = bgCanvas.getContext("2d");
 
-      const keys = {};
-      document.addEventListener("keydown", (e) => (keys[e.key] = true));
-      document.addEventListener("keyup", (e) => (keys[e.key] = false));
-
-      function update() {
-        bgX += speed;
-        if (bgX >= canvas.width) bgX = 0;
-
-        if (keys["ArrowUp"]) player.y -= 6;
-        if (keys["ArrowDown"]) player.y += 6;
-
-        if (keys["ArrowLeft"]) {
-          speed -= 0.05;
-          if (speed < 1) speed = 1;
+      function prepareBackground() {
+        bgCanvas.width = canvas.width;
+        bgCanvas.height = canvas.height;
+        
+        if (bgReady) {
+          bgCtx.drawImage(bgImg, 0, 0, bgCanvas.width, bgCanvas.height);
+        } else {
+          // Césped (Verde)
+          bgCtx.fillStyle = "#2d5a27"; 
+          bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+          
+          // Asfalto (Gris) - Centrado
+          bgCtx.fillStyle = "#444"; 
+          const roadH = 350; // Carretera un poco más ancha
+          bgCtx.fillRect(0, canvas.height/2 - roadH/2, bgCanvas.width, roadH);
+          
+          // Línea central
+          bgCtx.strokeStyle = "#fff";
+          bgCtx.setLineDash([30, 30]);
+          bgCtx.lineWidth = 4;
+          bgCtx.beginPath();
+          bgCtx.moveTo(0, canvas.height/2);
+          bgCtx.lineTo(bgCanvas.width, canvas.height/2);
+          bgCtx.stroke();
         }
-
-        if (keys["ArrowRight"]) {
-          speed += 0.05;
-        }
-
-        speed += 0.002;
-
-        if (speed > MAX_SPEED) speed = MAX_SPEED;
-
-        if (player.y < 0) player.y = 0;
-        if (player.y + player.height > canvas.height)
-          player.y = canvas.height - player.height;
-
-        speedDisplay = Math.floor(speed * 10);
       }
 
-      function drawSpeedometer() {
+      // --- LÓGICA ---
+      let speed = 2; 
+      const MAX_SPEED = 20; 
+      let needleAngleSmooth = Math.PI;
+      let bgX = 0;
+
+      const player = { x: 100, y: 300, width: CAR_WIDTH, height: CAR_HEIGHT };
+      const enemies = [];
+
+      function spawnEnemy() {
+        if (enemies.length >= 6) return;
+        // Enemigos dentro de la carretera
+        const lane = Math.random() < 0.5 ? canvas.height/2 - 120 : canvas.height/2 + 40;
+        enemies.push({
+          x: canvas.width + 200,
+          y: lane,
+          width: CAR_WIDTH,
+          height: CAR_HEIGHT,
+          speed: speed + Math.random() * 5 + 3
+        });
+      }
+      setInterval(spawnEnemy, 1500);
+
+      // --- VELOCÍMETRO ESTÁTICO ---
+      const speedoCanvas = document.createElement("canvas");
+      const speedoCtx = speedoCanvas.getContext("2d");
+      speedoCanvas.width = 300;
+      speedoCanvas.height = 200;
+
+      function drawSpeedometerStatic() {
+        const c = speedoCtx;
         const centerX = 150;
-        const centerY = canvas.height - 50;
+        const centerY = 180;
         const radius = 100;
+        c.clearRect(0, 0, speedoCanvas.width, speedoCanvas.height);
+        
+        const gradient = c.createRadialGradient(centerX, centerY, 20, centerX, centerY, radius + 40);
+        gradient.addColorStop(0, "rgba(255,255,255,0.15)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        c.fillStyle = gradient;
+        c.beginPath();
+        c.arc(centerX, centerY, radius + 40, Math.PI, 2 * Math.PI);
+        c.fill();
 
-        // Dial semicircular
-        ctx.beginPath();
-        ctx.lineWidth = 8;
-        ctx.strokeStyle = "#ffffff";
-        ctx.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
-        ctx.stroke();
+        c.beginPath();
+        c.lineWidth = 6;
+        c.strokeStyle = "#ffffff";
+        c.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
+        c.stroke();
 
-        // Marcas
-        for (let i = 0; i <= MAX_SPEED; i += 3) {
+        for (let i = 0; i <= MAX_SPEED; i += 2) {
           const angle = Math.PI + (i / MAX_SPEED) * Math.PI;
-          const x1 = centerX + Math.cos(angle) * (radius - 10);
-          const y1 = centerY + Math.sin(angle) * (radius - 10);
-          const x2 = centerX + Math.cos(angle) * radius;
-          const y2 = centerY + Math.sin(angle) * radius;
+          c.strokeStyle = "white";
+          c.beginPath();
+          c.moveTo(centerX + Math.cos(angle)*92, centerY + Math.sin(angle)*92);
+          c.lineTo(centerX + Math.cos(angle)*100, centerY + Math.sin(angle)*100);
+          c.stroke();
+          
+          c.fillStyle = "white";
+          c.font = "bold 14px Arial";
+          c.textAlign = "center";
+          c.fillText(i * 10, centerX + Math.cos(angle)*70, centerY + Math.sin(angle)*70 + 5);
+        }
+      }
 
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-          ctx.stroke();
+      function update() {
+        // --- DETECCIÓN DE CÉSPED CORREGIDA ---
+        // La carretera mide 350px y está centrada.
+        const roadTop = canvas.height / 2 - 175;
+        const roadBottom = canvas.height / 2 + 175;
+        
+        // Verificamos si el centro del coche se sale del asfalto
+        const playerCenterY = player.y + player.height / 2;
 
-          // Números
-          const nx = centerX + Math.cos(angle) * (radius - 30);
-          const ny = centerY + Math.sin(angle) * (radius - 30);
-
-          ctx.fillStyle = "white";
-          ctx.font = "16px Arial";
-          ctx.fillText(i * 10, nx - 10, ny + 5);
+        if (playerCenterY < roadTop || playerCenterY > roadBottom) {
+            speed = Math.max(1.5, speed - 0.05); // Frenado mucho más suave
+            player.y += Math.sin(Date.now() * 0.5) * 1.5; // Vibración sutil
+        } else {
+            speed += 0.008; // Aceleración un poco más rápida en asfalto
         }
 
-        // Aguja
-        const needleAngle = Math.PI + (speed / MAX_SPEED) * Math.PI;
-        const needleX = centerX + Math.cos(needleAngle) * (radius - 20);
-        const needleY = centerY + Math.sin(needleAngle) * (radius - 20);
+        bgX += speed * 4;
+        if (bgX >= canvas.width) bgX = 0;
+
+        // Movimiento
+        if (keys["ArrowUp"]) player.y -= 7;
+        if (keys["ArrowDown"]) player.y += 7;
+        if (keys["ArrowLeft"]) speed = Math.max(1, speed - 0.2);
+        if (keys["ArrowRight"]) speed = Math.min(MAX_SPEED, speed + 0.15);
+
+        speed = Math.min(speed, MAX_SPEED);
+
+        // Límites de pantalla
+        if (player.y < 0) player.y = 0;
+        if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+
+        // Enemigos
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          enemies[i].x -= enemies[i].speed;
+          if (enemies[i].x + enemies[i].width < -200) enemies.splice(i, 1);
+        }
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Dibujo del fondo
+        ctx.drawImage(bgCanvas, -bgX, 0);
+        ctx.drawImage(bgCanvas, canvas.width - bgX, 0);
+
+        // Jugador
+        if (carImg.complete && carImg.naturalWidth !== 0) {
+          ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+        } else {
+          ctx.fillStyle = "#00f0ff";
+          ctx.fillRect(player.x, player.y, player.width, player.height);
+        }
+
+        // Enemigos
+        enemies.forEach(e => {
+          if (enemyImg.complete && enemyImg.naturalWidth !== 0) {
+            ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height);
+          } else {
+            ctx.fillStyle = "#ff4444";
+            ctx.fillRect(e.x, e.y, e.width, e.height);
+          }
+        });
+
+        // Velocímetro
+        const centerX = 150;
+        const centerY = canvas.height - 130; 
+        ctx.drawImage(speedoCanvas, 0, canvas.height - 310);
+        
+        const targetAngle = Math.PI + (speed / MAX_SPEED) * Math.PI;
+        needleAngleSmooth += (targetAngle - needleAngleSmooth) * 0.1;
 
         ctx.strokeStyle = "red";
         ctx.lineWidth = 4;
         ctx.beginPath();
         ctx.moveTo(centerX, centerY);
-        ctx.lineTo(needleX, needleY);
+        ctx.lineTo(centerX + Math.cos(needleAngleSmooth)*80, centerY + Math.sin(needleAngleSmooth)*80);
         ctx.stroke();
 
-        // Centro de la aguja
-        ctx.fillStyle = "black";
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 8, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Texto digital
         ctx.fillStyle = "white";
-        ctx.font = "22px Arial";
-        ctx.fillText(`${speedDisplay} km/h`, centerX - 40, centerY + 40);
+        ctx.font = "bold 24px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(`${Math.floor(speed * 10)} km/h`, centerX, centerY + 35);
       }
 
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
-        ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
-
-        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
-
-        drawSpeedometer();
-      }
+      const keys = {};
+      document.addEventListener("keydown", (e) => keys[e.key] = true);
+      document.addEventListener("keyup", (e) => keys[e.key] = false);
 
       function loop() {
         update();
@@ -161,6 +229,7 @@
         requestAnimationFrame(loop);
       }
 
+      resizeCanvas();
       loop();
     </script>
   </body>
