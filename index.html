@@ -1,200 +1,242 @@
 <!doctype html>
-<html lang="es">
+<html lang="ca">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RACC-Reaction Driver</title>
+    <title>RACC - Reaction Driver</title>
     <style>
-      body { margin: 0; background: #222; overflow: hidden; }
+      body { margin: 0; background: #222; overflow: hidden; font-family: Arial, sans-serif; }
       canvas { display: block; image-rendering: pixelated; }
+      #ui-overlay {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        display: none; flex-direction: column; justify-content: center;
+        align-items: center; background: rgba(0,0,0,0.85); color: white; z-index: 10;
+      }
+      .btn {
+        padding: 15px 30px; margin: 10px; font-size: 20px; cursor: pointer;
+        border: none; border-radius: 5px; font-weight: bold; transition: 0.3s;
+      }
+      #btn-retry { background: #27ae60; color: white; }
+      #btn-exit { background: #c0392b; color: white; }
+      .btn:hover { transform: scale(1.1); }
     </style>
   </head>
   <body>
+    <div id="ui-overlay">
+      <h1 id="status-title">NIVELL SUPERAT!</h1>
+      <button id="btn-retry" class="btn">TORNAR A JUGAR</button>
+      <button id="btn-exit" class="btn">SORTIR</button>
+    </div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
+      const overlay = document.getElementById("ui-overlay");
+      const statusTitle = document.getElementById("status-title");
 
-      // Tamaños de elementos
-      const CAR_WIDTH = 160; 
-      const CAR_HEIGHT = 80;
-      const TREE_WIDTH = 150;
-      const TREE_HEIGHT = 180;
-      const CONE_WIDTH = 60;
-      const CONE_HEIGHT = 70;
+      // --- CONFIGURACIÓ ---
+      const CAR_WIDTH = 160; const CAR_HEIGHT = 80;
+      const TREE_WIDTH = 150; const TREE_HEIGHT = 180;
+      const CONE_WIDTH = 60; const CONE_HEIGHT = 70;
+      const SIGN_WIDTH = 80; const SIGN_HEIGHT = 120;
+      const LEVEL_DISTANCE = 60000; 
+
+      // --- VARIABLES D'ESTAT ---
+      let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, isGameOver, distanceCovered;
+      let speedLimit = null;
+
+      function initGame() {
+        speed = 2; MAX_SPEED = 20; needleAngleSmooth = Math.PI; bgX = 0; distanceCovered = 0;
+        isGameOver = false; speedLimit = null;
+        player = { x: 150, y: canvas.height / 2 - CAR_HEIGHT / 2, width: CAR_WIDTH, height: CAR_HEIGHT };
+        enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = [];
+        overlay.style.display = "none";
+      }
 
       function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        player.y = canvas.height / 2 - CAR_HEIGHT / 2;
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        if (!player) initGame();
         drawSpeedometerStatic();
       }
       window.addEventListener("resize", resizeCanvas);
 
-      // --- IMÁGENES ---
-      const bgImg = new Image(); 
-      bgImg.src = "images/fondo.png"; // Usando tu imagen de fondo
-      
-      const carImg = new Image(); 
-      carImg.src = "images/coche_transparente.png";
-      
-      const treeImg = new Image(); 
-      treeImg.src = "images/arbol.png";
-      
-      const coneImg = new Image(); 
-      coneImg.src = "images/cono.png";
+      const bgImg = new Image(); bgImg.src = "images/fondo.png"; 
+      const carImg = new Image(); carImg.src = "images/coche_transparente.png";
+      const treeImg = new Image(); treeImg.src = "images/arbol.png";
+      const coneImg = new Image(); coneImg.src = "images/cono.png";
 
-      // --- LÓGICA DE JUEGO ---
-      let speed = 2; 
-      const MAX_SPEED = 20; 
-      let needleAngleSmooth = Math.PI;
-      let bgX = 0;
-
-      const player = { x: 100, y: 300, width: CAR_WIDTH, height: CAR_HEIGHT };
-      const enemies = [];
-      const obstacles = [];
+      // --- GENERACIÓ ---
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnEnemy(); }, 3500);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnObstacle(); }, 2500);
+      setInterval(() => { if(!isGameOver) spawnTrafficLight(); }, 20000);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnSign(); }, 12000);
 
       function spawnEnemy() {
-        if (enemies.length >= 4) return;
-        const lane = Math.random() < 0.5 ? canvas.height/2 - 140 : canvas.height/2 + 50;
-        enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 4 });
+        const lane = Math.random() < 0.5 ? canvas.height/2 - 90 : canvas.height/2 + 30;
+        enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 3 });
       }
-
       function spawnObstacle() {
-        if (obstacles.length >= 10) return;
         const isTree = Math.random() < 0.6;
-        let yPos;
-        if (isTree) {
-          yPos = Math.random() < 0.7 ? Math.random() * (canvas.height/2 - 250) : canvas.height - 200;
-        } else {
-          yPos = Math.random() < 0.5 ? canvas.height/2 - 225 : canvas.height/2 + 160;
-        }
+        let yPos; const center = canvas.height / 2;
+        if (isTree) yPos = Math.random() < 0.5 ? Math.random() * (center - 380) : (center + 320) + Math.random() * 100;
+        else yPos = Math.random() < 0.5 ? center - 320 : center + 240;
         obstacles.push({ x: canvas.width + 200, y: yPos, width: isTree ? TREE_WIDTH : CONE_WIDTH, height: isTree ? TREE_HEIGHT : CONE_HEIGHT, img: isTree ? treeImg : coneImg });
       }
-
-      setInterval(spawnEnemy, 2500);
-      setInterval(spawnObstacle, 1500);
-
-      // --- VELOCÍMETRO (ESTÁTICO) ---
-      const speedoCanvas = document.createElement("canvas");
-      const speedoCtx = speedoCanvas.getContext("2d");
-      speedoCanvas.width = 300; speedoCanvas.height = 200;
-
-      function drawSpeedometerStatic() {
-        const c = speedoCtx;
-        const centerX = 150;
-        const centerY = 180;
-        const radius = 100;
-        c.clearRect(0, 0, speedoCanvas.width, speedoCanvas.height);
-        c.beginPath();
-        c.lineWidth = 6;
-        c.strokeStyle = "#ffffff";
-        c.arc(centerX, centerY, radius, Math.PI, 2 * Math.PI);
-        c.stroke();
-
-        for (let i = 0; i <= MAX_SPEED; i += 2) {
-          const angle = Math.PI + (i / MAX_SPEED) * Math.PI;
-          c.strokeStyle = "white";
-          c.beginPath();
-          c.moveTo(centerX + Math.cos(angle)*92, centerY + Math.sin(angle)*92);
-          c.lineTo(centerX + Math.cos(angle)*100, centerY + Math.sin(angle)*100);
-          c.stroke();
-          c.fillStyle = "white";
-          c.font = "bold 14px Arial";
-          c.textAlign = "center";
-          c.fillText(i * 10, centerX + Math.cos(angle)*70, centerY + Math.sin(angle)*70 + 5);
-        }
+      function spawnTrafficLight() {
+        const yPos = Math.random() < 0.5 ? (canvas.height / 2 - 380) : (canvas.height / 2 + 220);
+        trafficLights.push({ x: canvas.width + 600, y: yPos, state: 'green', timer: 0, passed: false });
       }
-
-      function checkCollision(r1, r2) {
-        return r1.x < r2.x + r2.width * 0.8 &&
-               r1.x + r1.width * 0.8 > r2.x &&
-               r1.y < r2.y + r2.height * 0.8 &&
-               r1.y + r1.height * 0.8 > r2.y;
+      function spawnSign() {
+        const limits = [5, 8, 12, 15]; const val = limits[Math.floor(Math.random() * limits.length)];
+        const yPos = Math.random() < 0.5 ? (canvas.height / 2 - 360) : (canvas.height / 2 + 220);
+        signs.push({ x: canvas.width + 400, y: yPos, limit: val, width: SIGN_WIDTH, height: SIGN_HEIGHT });
       }
 
       function update() {
-        // Asumiendo que en fondo.png la carretera está en el centro (aprox 400px de ancho)
-        const roadTop = canvas.height / 2 - 200;
-        const roadBottom = canvas.height / 2 + 200;
-        const playerCenterY = player.y + player.height / 2;
+        if (isGameOver) return;
+        distanceCovered += speed * 5;
+        if (distanceCovered >= LEVEL_DISTANCE) { winGame(); return; }
 
-        if (playerCenterY < roadTop || playerCenterY > roadBottom) {
-            speed = Math.max(1.5, speed - 0.05);
-            player.y += Math.sin(Date.now() * 0.5) * 1.5;
-        } else {
-            speed += 0.008; 
+        const roadTop = canvas.height / 2 - 180;
+        const roadBottom = canvas.height / 2 + 170;
+        let currentMaxSpeed = MAX_SPEED;
+        let lateralSpeed = 7;
+
+        if (player.y < roadTop || (player.y + player.height) > roadBottom) {
+            currentMaxSpeed = 5; lateralSpeed = 4;    
+            if (speed > currentMaxSpeed) speed -= 0.2;
         }
 
-        bgX += speed * 5;
-        if (bgX >= canvas.width) bgX = 0;
+        if (keys["ArrowUp"]) player.y -= lateralSpeed;
+        if (keys["ArrowDown"]) player.y += lateralSpeed;
+        if (keys["ArrowLeft"]) speed = Math.max(0, speed - 0.4);
+        else if (keys["ArrowRight"]) speed = Math.min(currentMaxSpeed, speed + 0.15);
+        
+        bgX += speed * 6; if (bgX >= canvas.width) bgX = 0;
+        player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
-        if (keys["ArrowUp"]) player.y -= 8;
-        if (keys["ArrowDown"]) player.y += 8;
-        if (keys["ArrowLeft"]) speed = Math.max(1, speed - 0.2);
-        if (keys["ArrowRight"]) speed = Math.min(MAX_SPEED, speed + 0.15);
+        trafficLights.forEach((tl, index) => {
+          tl.x -= speed * 6; tl.timer++;
+          if (tl.timer < 300) tl.state = 'green';
+          else if (tl.timer < 450) tl.state = 'amber';
+          else if (tl.timer < 1100) {
+            tl.state = 'red';
+            if (tl.timer === 451) pedestrians.push({ x: tl.x + 40, y: canvas.height/2 + 180, walkY: -2.5 });
+          } else tl.timer = 0;
+          if (tl.state === 'red' && player.x + player.width > tl.x && player.x < tl.x + 100 && !tl.passed) endGame("¡SEMÀFOR EN VERMELL!");
+          if (player.x > tl.x + 100) tl.passed = true;
+          if (tl.x < -600) trafficLights.splice(index, 1);
+        });
 
-        speed = Math.min(speed, MAX_SPEED);
+        for (let i = pedestrians.length - 1; i >= 0; i--) {
+            pedestrians[i].x -= speed * 6; pedestrians[i].y += pedestrians[i].walkY;
+            if (checkCollision(player, { x: pedestrians[i].x, y: pedestrians[i].y, width: 30, height: 50 })) endGame("¡ATROPEL·LAMENT!");
+            if (pedestrians[i].y < 0) pedestrians.splice(i, 1);
+        }
+
+        signs.forEach((s, i) => {
+            s.x -= speed * 6;
+            if (player.x > s.x && player.x < s.x + 60) speedLimit = s.limit;
+        });
+
+        if (speedLimit && speed > speedLimit + 0.5) endGame("¡EXCÉS DE VELOCITAT!");
 
         [enemies, obstacles].forEach(list => {
           for (let i = list.length - 1; i >= 0; i--) {
-            list[i].x -= speed + (list[i].speed || 0);
-            if (checkCollision(player, list[i])) {
-              speed = 1.5;
-              list.splice(i, 1);
-              continue;
-            }
-            if (list[i].x < -300) list.splice(i, 1);
+            list[i].x -= (speed * 6) + (list[i].speed || 0);
+            if (checkCollision(player, list[i])) endGame("¡XOC!");
+            if (list[i].x < -400) list.splice(i, 1);
           }
         });
       }
 
+      // --- HITBOX MILLORADA ---
+      function checkCollision(r1, r2) {
+        if (!r2.x || !r2.width) return false;
+        // Afegim un marge de seguretat del 20% perquè la col·lisió no sigui tan estricta
+        const marginX = r2.width * 0.2;
+        const marginY = r2.height * 0.2;
+        return r1.x < (r2.x + r2.width - marginX) && 
+               (r1.x + r1.width) > (r2.x + marginX) && 
+               r1.y < (r2.y + r2.height - marginY) && 
+               (r1.y + r1.height) > (r2.y + marginY);
+      }
+
+      function winGame() { isGameOver = true; statusTitle.innerText = "NIVELL SUPERAT! 🎉"; statusTitle.style.color = "#2ecc71"; overlay.style.display = "flex"; }
+      function endGame(reason) { isGameOver = true; statusTitle.innerText = reason; statusTitle.style.color = "#e74c3c"; overlay.style.display = "flex"; }
+
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Fondo con imagen fondo.png
         if (bgImg.complete) {
           ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
           ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
         }
 
-        // Jugador y Enemigos
-        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
-        enemies.forEach(e => ctx.drawImage(carImg, e.x, e.y, e.width, e.height));
-
-        // Obstáculos
-        obstacles.forEach(o => {
-          if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.width, o.height);
+        trafficLights.forEach(tl => {
+          ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+          for (let i = 0; i < 7; i++) ctx.fillRect(tl.x, (canvas.height/2-150) + (i*50), 120, 20);
+          ctx.fillStyle = "#333"; ctx.fillRect(tl.x + 120, tl.y, 45, 110);
+          ctx.fillStyle = (tl.state === 'red') ? "#f00" : "#300"; ctx.beginPath(); ctx.arc(tl.x+142, tl.y+25, 14, 0, 7); ctx.fill();
+          ctx.fillStyle = (tl.state === 'amber') ? "#fa0" : "#320"; ctx.beginPath(); ctx.arc(tl.x+142, tl.y+55, 14, 0, 7); ctx.fill();
+          ctx.fillStyle = (tl.state === 'green') ? "#0f0" : "#030"; ctx.beginPath(); ctx.arc(tl.x+142, tl.y+85, 14, 0, 7); ctx.fill();
         });
 
-        // Velocímetro
-        const centerX = 150;
-        const centerY = canvas.height - 130; 
-        ctx.drawImage(speedoCanvas, 0, canvas.height - 310);
-        
-        const targetAngle = Math.PI + (speed / MAX_SPEED) * Math.PI;
+        pedestrians.forEach(p => { ctx.fillStyle = "#3498db"; ctx.fillRect(p.x, p.y, 25, 40); });
+        signs.forEach(s => {
+          ctx.fillStyle = "#555"; ctx.fillRect(s.x + 35, s.y + 40, 10, 80);
+          ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(s.x + 40, s.y + 40, 40, 0, 7); ctx.fill();
+          ctx.strokeStyle = "red"; ctx.lineWidth = 8; ctx.stroke();
+          ctx.fillStyle = "black"; ctx.font = "bold 30px Arial"; ctx.textAlign = "center"; ctx.fillText(s.limit * 10, s.x + 40, s.y + 50);
+        });
+
+        obstacles.forEach(o => { if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.width, o.height); });
+        enemies.forEach(e => ctx.drawImage(carImg, e.x, e.y, e.width, e.height));
+        ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+
+        // UI SENYAL DALT ESQUERRA
+        if (speedLimit) {
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(60, 60, 40, 0, 7); ctx.fill();
+            ctx.strokeStyle = (speed > speedLimit + 0.5 && Math.floor(Date.now()/200)%2==0) ? "yellow" : "red";
+            ctx.lineWidth = 6; ctx.stroke();
+            ctx.fillStyle = "black"; ctx.font = "bold 28px Arial"; ctx.textAlign = "center"; ctx.fillText(speedLimit * 10, 60, 70);
+        }
+
+        const barW = 400, barX = canvas.width/2 - 200, progress = distanceCovered/LEVEL_DISTANCE;
+        ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(barX - 5, 25, barW + 10, 30);
+        ctx.fillStyle = "#3498db"; ctx.fillRect(barX, 30, barW * Math.min(1, progress), 20);
+        ctx.strokeStyle = "white"; ctx.strokeRect(barX, 30, barW, 20);
+        ctx.fillStyle = "white"; ctx.font = "bold 18px Arial"; ctx.textAlign = "center"; ctx.fillText(Math.floor(progress * 100) + "%", canvas.width/2, 47);
+
+        const vX = 150, vY = canvas.height - 50;
+        ctx.drawImage(speedoCanvas, 0, canvas.height - 230);
+        const targetAngle = Math.PI + (speed / 20) * Math.PI;
         needleAngleSmooth += (targetAngle - needleAngleSmooth) * 0.1;
-
-        ctx.strokeStyle = "red";
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.lineTo(centerX + Math.cos(needleAngleSmooth)*80, centerY + Math.sin(needleAngleSmooth)*80);
-        ctx.stroke();
-
-        ctx.fillStyle = "white";
-        ctx.font = "bold 24px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(`${Math.floor(speed * 10)} km/h`, centerX, centerY + 35);
+        ctx.strokeStyle = "red"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(vX, vY);
+        ctx.lineTo(vX + Math.cos(needleAngleSmooth)*80, vY + Math.sin(needleAngleSmooth)*80); ctx.stroke();
+        ctx.fillStyle = "white"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center"; ctx.fillText(`${Math.floor(speed * 10)} km/h`, vX, vY + 35);
       }
 
+      const speedoCanvas = document.createElement("canvas");
+      const speedoCtx = speedoCanvas.getContext("2d");
+      speedoCanvas.width = 300; speedoCanvas.height = 200;
+      function drawSpeedometerStatic() {
+        const c = speedoCtx; c.clearRect(0,0,300,200);
+        c.beginPath(); c.lineWidth = 6; c.strokeStyle = "white"; c.arc(150, 180, 100, Math.PI, 2 * Math.PI); c.stroke();
+        for (let i = 0; i <= 20; i += 2) {
+          const a = Math.PI + (i / 20) * Math.PI;
+          c.fillStyle = "white"; c.font = "bold 14px Arial"; c.textAlign = "center";
+          c.fillText(i * 10, 150 + Math.cos(a)*70, 180 + Math.sin(a)*70 + 5);
+        }
+      }
+
+      document.getElementById("btn-retry").onclick = initGame;
+      document.getElementById("btn-exit").onclick = () => window.location.reload();
       const keys = {};
       document.addEventListener("keydown", (e) => keys[e.key] = true);
       document.addEventListener("keyup", (e) => keys[e.key] = false);
-
       function loop() { update(); draw(); requestAnimationFrame(loop); }
-      resizeCanvas(); loop();
+      initGame(); resizeCanvas(); loop();
     </script>
   </body>
 </html>
