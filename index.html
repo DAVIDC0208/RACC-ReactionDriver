@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RACC - Reaction Driver</title>
+    <title>RACC - Reaction Driver (Chaos Mode)</title>
     <style>
       body { margin: 0; background: #222; overflow: hidden; font-family: Arial, sans-serif; }
       canvas { display: block; image-rendering: pixelated; }
@@ -40,18 +40,20 @@
       const CAR_HEIGHT = 110;
       const TREE_WIDTH = 150; const TREE_HEIGHT = 180;
       const SIGN_WIDTH = 80; const SIGN_HEIGHT = 120;
-      const LEVEL_DISTANCE = 60000; 
+      const LEVEL_DISTANCE = 300000; 
+      const SPEED_FOR_LIMIT = 15; 
 
-      let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, continuousLines, isGameOver, distanceCovered;
+      let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, isGameOver, distanceCovered;
       let speedLimit = null;
       let stopTimer = 0; 
       let grassTimer = 0;
+      let overSpeedTimer = 0; 
 
       function initGame() {
         speed = 2; MAX_SPEED = 20; needleAngleSmooth = Math.PI; bgX = 0; distanceCovered = 0;
-        isGameOver = false; speedLimit = null; stopTimer = 0; grassTimer = 0;
+        isGameOver = false; speedLimit = null; stopTimer = 0; grassTimer = 0; overSpeedTimer = 0;
         player = { x: 150, y: (canvas.height / 2) - (CAR_HEIGHT / 2), width: CAR_WIDTH, height: CAR_HEIGHT };
-        enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = []; continuousLines = [];
+        enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = [];
         overlay.style.display = "none";
       }
 
@@ -67,16 +69,29 @@
       const carImg = new Image(); carImg.src = "images/coche_transparente.png";
       const treeImg = new Image(); treeImg.src = "images/arbol.png";
 
-      // --- GENERACIÓ ---
-      setInterval(() => { if(!isGameOver && speed > 0.5) spawnEnemy(); }, 3500);
-      setInterval(() => { if(!isGameOver && speed > 0.5) spawnObstacle(); }, 2500);
-      setInterval(() => { if(!isGameOver) spawnTrafficLight(); }, 20000);
-      setInterval(() => { if(!isGameOver && speed > 0.5) spawnSign(); }, 12000);
-      setInterval(() => { if(!isGameOver && speed > 0.5) spawnContinuousLine(); }, 8000);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnEnemy(); }, 1500);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnObstacle(); }, 1800);
+      setInterval(() => { if(!isGameOver) spawnTrafficLight(); }, 12000);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnSign(); }, 7000);
 
       function spawnEnemy() {
-        const lane = Math.random() < 0.5 ? canvas.height/2 - 100 : canvas.height/2 + 20;
-        enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 3 });
+        // CARRILS ALEATORIS (No només un costat)
+        const lanes = [
+          canvas.height / 2 - 180, 
+          canvas.height / 2 - 80,  
+          canvas.height / 2 + 20,  
+          canvas.height / 2 + 120  
+        ];
+        const selectedLane = lanes[Math.floor(Math.random() * lanes.length)];
+        const jitter = (Math.random() - 0.5) * 20;
+
+        enemies.push({ 
+          x: canvas.width + 300, 
+          y: selectedLane + jitter, 
+          width: CAR_WIDTH, 
+          height: CAR_HEIGHT, 
+          speed: speed + 5 
+        });
       }
       
       function spawnObstacle() {
@@ -91,18 +106,20 @@
       }
       
       function spawnSign() {
-        const limits = [5, 8, 12, 15]; const val = limits[Math.floor(Math.random() * limits.length)];
+        const limits = [5, 8, 10, 12];
+        const val = limits[Math.floor(Math.random() * limits.length)];
         const yPos = Math.random() < 0.5 ? (canvas.height / 2 - 360) : (canvas.height / 2 + 220);
         signs.push({ x: canvas.width + 400, y: yPos, limit: val, width: SIGN_WIDTH, height: SIGN_HEIGHT });
-      }
-
-      function spawnContinuousLine() {
-        continuousLines.push({ x: canvas.width + 100, width: 1200 }); 
       }
 
       function update() {
         if (isGameOver) return;
         
+        if (speed > SPEED_FOR_LIMIT) {
+            overSpeedTimer += 1/60;
+            if (overSpeedTimer >= 5) endGame("¡CONDUCCIÓ TEMERÀRIA (150km/h+)! ");
+        } else overSpeedTimer = 0;
+
         if (speed < 0.5) {
             stopTimer += 1/60; 
             if (stopTimer >= 5) endGame("¡OBSTRUCCIÓ DEL TRÀNSIT!");
@@ -111,8 +128,6 @@
         distanceCovered += speed * 5;
         if (distanceCovered >= LEVEL_DISTANCE) { winGame(); return; }
 
-        // --- HITBOX DEL CÈSPED MÉS ALLUNYADA ---
-        // Hem passat de 180/170 a 250/240 per donar més marge
         const roadTop = canvas.height / 2 - 250;
         const roadBottom = canvas.height / 2 + 240;
         let currentMaxSpeed = MAX_SPEED;
@@ -125,23 +140,9 @@
             if (grassTimer >= 2) endGame("¡FORA DE LA CARRETERA!");
         } else grassTimer = 0;
 
-        let onContinuousLine = false;
-        continuousLines.forEach(line => {
-          line.x -= speed * 6;
-          if (player.x + player.width > line.x && player.x < line.x + line.width) {
-            if (Math.abs((player.y + player.height/2) - (canvas.height/2)) < 60) onContinuousLine = true;
-          }
-        });
-
         if (speed >= 0.5) {
-            if (keys["ArrowUp"]) {
-                if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
-                player.y -= lateralSpeed;
-            }
-            if (keys["ArrowDown"]) {
-                if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
-                player.y += lateralSpeed;
-            }
+            if (keys["ArrowUp"]) player.y -= lateralSpeed;
+            if (keys["ArrowDown"]) player.y += lateralSpeed;
         }
         
         if (keys["ArrowLeft"]) speed = Math.max(0, speed - 0.4);
@@ -150,15 +151,13 @@
         bgX += speed * 6; if (bgX >= canvas.width) bgX = 0;
         player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
-        continuousLines = continuousLines.filter(l => l.x + l.width > -100);
-
         trafficLights.forEach((tl, index) => {
           tl.x -= speed * 6; tl.timer++;
           if (tl.timer < 300) tl.state = 'green';
           else if (tl.timer < 450) tl.state = 'amber';
           else if (tl.timer < 1100) {
             tl.state = 'red';
-            if (tl.timer === 451) pedestrians.push({ x: tl.x + 40, y: canvas.height/2 + 180, walkY: -2.5 });
+            if (tl.timer === 451) pedestrians.push({ x: tl.x + 40, y: canvas.height/2 + 180, walkY: -3 });
           } else tl.timer = 0;
           if (tl.state === 'red' && player.x + player.width > tl.x && player.x < tl.x + 100 && !tl.passed) endGame("¡SEMÀFOR EN VERMELL!");
           if (player.x > tl.x + 100) tl.passed = true;
@@ -168,7 +167,7 @@
         for (let i = pedestrians.length - 1; i >= 0; i--) {
             pedestrians[i].x -= speed * 6; pedestrians[i].y += pedestrians[i].walkY;
             if (checkCollision(player, { x: pedestrians[i].x, y: pedestrians[i].y, width: 30, height: 50 })) endGame("¡ATROPEL·LAMENT!");
-            if (pedestrians[i].y < 0) pedestrians.splice(i, 1);
+            if (pedestrians[i].y < -100 || pedestrians[i].y > canvas.height + 100) pedestrians.splice(i, 1);
         }
 
         signs.forEach(s => {
@@ -189,7 +188,7 @@
 
       function checkCollision(r1, r2) {
         if (!r2.x || !r2.width) return false;
-        const marginX = r2.width * 0.15, marginY = r2.height * 0.40;
+        const marginX = r2.width * 0.15, marginY = r2.height * 0.35;
         return r1.x < (r2.x + r2.width - marginX) && (r1.x + r1.width) > (r2.x + marginX) && 
                r1.y < (r2.y + r2.height - marginY) && (r1.y + r1.height) > (r2.y + marginY);
       }
@@ -203,11 +202,6 @@
           ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
           ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
         }
-
-        continuousLines.forEach(l => {
-          ctx.fillStyle = "white";
-          ctx.fillRect(l.x, canvas.height / 2 - 5, l.width, 10);
-        });
 
         trafficLights.forEach(tl => {
           ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
@@ -229,6 +223,12 @@
         obstacles.forEach(o => { if (o.img.complete) ctx.drawImage(o.img, o.x, o.y, o.width, o.height); });
         enemies.forEach(e => ctx.drawImage(carImg, e.x, e.y, e.width, e.height));
         ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
+
+        if (overSpeedTimer > 0) {
+            ctx.fillStyle = (Math.floor(Date.now() / 200) % 2 === 0) ? "red" : "yellow";
+            ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+            ctx.fillText(`¡FRENA! VELOCITAT EXCESSIVA: ${Math.ceil(5 - overSpeedTimer)}s`, canvas.width/2, 100);
+        }
 
         if (speedLimit) {
             ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(60, 60, 40, 0, 7); ctx.fill();
@@ -255,10 +255,6 @@
             ctx.fillStyle = grassTimer > 1.5 ? "red" : "orange";
             ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
             ctx.fillText("¡TORNA A LA CARRETERA!", canvas.width / 2, canvas.height / 2 - 150);
-        }
-        if (stopTimer > 2) {
-            ctx.fillStyle = "yellow"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
-            ctx.fillText(`MOU-TE! ${Math.ceil(5 - stopTimer)}s`, vX, vY - 140);
         }
       }
 
