@@ -38,19 +38,19 @@
       // --- CONFIGURACIÓ ---
       const CAR_WIDTH = 160; const CAR_HEIGHT = 80;
       const TREE_WIDTH = 150; const TREE_HEIGHT = 180;
-      const CONE_WIDTH = 60; const CONE_HEIGHT = 70;
       const SIGN_WIDTH = 80; const SIGN_HEIGHT = 120;
       const LEVEL_DISTANCE = 60000; 
 
       // --- VARIABLES D'ESTAT ---
-      let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, isGameOver, distanceCovered;
+      let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, continuousLines, isGameOver, distanceCovered;
       let speedLimit = null;
+      let stopTimer = 0; 
 
       function initGame() {
         speed = 2; MAX_SPEED = 20; needleAngleSmooth = Math.PI; bgX = 0; distanceCovered = 0;
-        isGameOver = false; speedLimit = null;
+        isGameOver = false; speedLimit = null; stopTimer = 0;
         player = { x: 150, y: canvas.height / 2 - CAR_HEIGHT / 2, width: CAR_WIDTH, height: CAR_HEIGHT };
-        enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = [];
+        enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = []; continuousLines = [];
         overlay.style.display = "none";
       }
 
@@ -64,37 +64,50 @@
       const bgImg = new Image(); bgImg.src = "images/fondo.png"; 
       const carImg = new Image(); carImg.src = "images/coche_transparente.png";
       const treeImg = new Image(); treeImg.src = "images/arbol.png";
-      const coneImg = new Image(); coneImg.src = "images/cono.png";
 
       // --- GENERACIÓ ---
       setInterval(() => { if(!isGameOver && speed > 0.5) spawnEnemy(); }, 3500);
       setInterval(() => { if(!isGameOver && speed > 0.5) spawnObstacle(); }, 2500);
       setInterval(() => { if(!isGameOver) spawnTrafficLight(); }, 20000);
       setInterval(() => { if(!isGameOver && speed > 0.5) spawnSign(); }, 12000);
+      setInterval(() => { if(!isGameOver && speed > 0.5) spawnContinuousLine(); }, 8000);
 
       function spawnEnemy() {
         const lane = Math.random() < 0.5 ? canvas.height/2 - 90 : canvas.height/2 + 30;
         enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 3 });
       }
+      
       function spawnObstacle() {
-        const isTree = Math.random() < 0.6;
         let yPos; const center = canvas.height / 2;
-        if (isTree) yPos = Math.random() < 0.5 ? Math.random() * (center - 380) : (center + 320) + Math.random() * 100;
-        else yPos = Math.random() < 0.5 ? center - 320 : center + 240;
-        obstacles.push({ x: canvas.width + 200, y: yPos, width: isTree ? TREE_WIDTH : CONE_WIDTH, height: isTree ? TREE_HEIGHT : CONE_HEIGHT, img: isTree ? treeImg : coneImg });
+        yPos = Math.random() < 0.5 ? Math.random() * (center - 380) : (center + 320) + Math.random() * 100;
+        obstacles.push({ x: canvas.width + 200, y: yPos, width: TREE_WIDTH, height: TREE_HEIGHT, img: treeImg });
       }
+
       function spawnTrafficLight() {
         const yPos = Math.random() < 0.5 ? (canvas.height / 2 - 380) : (canvas.height / 2 + 220);
         trafficLights.push({ x: canvas.width + 600, y: yPos, state: 'green', timer: 0, passed: false });
       }
+      
       function spawnSign() {
         const limits = [5, 8, 12, 15]; const val = limits[Math.floor(Math.random() * limits.length)];
         const yPos = Math.random() < 0.5 ? (canvas.height / 2 - 360) : (canvas.height / 2 + 220);
         signs.push({ x: canvas.width + 400, y: yPos, limit: val, width: SIGN_WIDTH, height: SIGN_HEIGHT });
       }
 
+      function spawnContinuousLine() {
+        continuousLines.push({ x: canvas.width + 100, width: 1200 }); 
+      }
+
       function update() {
         if (isGameOver) return;
+        
+        if (speed < 0.5) {
+            stopTimer += 1/60; 
+            if (stopTimer >= 5) endGame("¡OBSTRUCCIÓ DEL TRÀNSIT!");
+        } else {
+            stopTimer = 0;
+        }
+
         distanceCovered += speed * 5;
         if (distanceCovered >= LEVEL_DISTANCE) { winGame(); return; }
 
@@ -108,13 +121,34 @@
             if (speed > currentMaxSpeed) speed -= 0.2;
         }
 
-        if (keys["ArrowUp"]) player.y -= lateralSpeed;
-        if (keys["ArrowDown"]) player.y += lateralSpeed;
+        let onContinuousLine = false;
+        continuousLines.forEach(line => {
+          line.x -= speed * 6;
+          // Comprovem si el jugador està al centre de la carretera (on hi ha la línia)
+          if (player.x + player.width > line.x && player.x < line.x + line.width) {
+            // El centre de la carretera és a canvas.height/2
+            if (Math.abs((player.y + player.height/2) - (canvas.height/2)) < 60) {
+                onContinuousLine = true;
+            }
+          }
+        });
+
+        if (keys["ArrowUp"]) {
+          if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
+          player.y -= lateralSpeed;
+        }
+        if (keys["ArrowDown"]) {
+          if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
+          player.y += lateralSpeed;
+        }
+        
         if (keys["ArrowLeft"]) speed = Math.max(0, speed - 0.4);
         else if (keys["ArrowRight"]) speed = Math.min(currentMaxSpeed, speed + 0.15);
         
         bgX += speed * 6; if (bgX >= canvas.width) bgX = 0;
         player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+
+        continuousLines = continuousLines.filter(l => l.x + l.width > -100);
 
         trafficLights.forEach((tl, index) => {
           tl.x -= speed * 6; tl.timer++;
@@ -151,12 +185,10 @@
         });
       }
 
-      // --- HITBOX MILLORADA ---
       function checkCollision(r1, r2) {
         if (!r2.x || !r2.width) return false;
-        // Afegim un marge de seguretat del 20% perquè la col·lisió no sigui tan estricta
-        const marginX = r2.width * 0.2;
-        const marginY = r2.height * 0.2;
+        const marginX = r2.width * 0.15;
+        const marginY = r2.height * 0.40;
         return r1.x < (r2.x + r2.width - marginX) && 
                (r1.x + r1.width) > (r2.x + marginX) && 
                r1.y < (r2.y + r2.height - marginY) && 
@@ -172,6 +204,12 @@
           ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
           ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
         }
+
+        // Dibuixar la línia contínua al centre exacte de la carretera
+        continuousLines.forEach(l => {
+          ctx.fillStyle = "white";
+          ctx.fillRect(l.x, canvas.height / 2 - 5, l.width, 10);
+        });
 
         trafficLights.forEach(tl => {
           ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
@@ -194,7 +232,6 @@
         enemies.forEach(e => ctx.drawImage(carImg, e.x, e.y, e.width, e.height));
         ctx.drawImage(carImg, player.x, player.y, player.width, player.height);
 
-        // UI SENYAL DALT ESQUERRA
         if (speedLimit) {
             ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(60, 60, 40, 0, 7); ctx.fill();
             ctx.strokeStyle = (speed > speedLimit + 0.5 && Math.floor(Date.now()/200)%2==0) ? "yellow" : "red";
@@ -215,6 +252,11 @@
         ctx.strokeStyle = "red"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(vX, vY);
         ctx.lineTo(vX + Math.cos(needleAngleSmooth)*80, vY + Math.sin(needleAngleSmooth)*80); ctx.stroke();
         ctx.fillStyle = "white"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center"; ctx.fillText(`${Math.floor(speed * 10)} km/h`, vX, vY + 35);
+
+        if (stopTimer > 2) {
+            ctx.fillStyle = "yellow"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
+            ctx.fillText(`MOU-TE! ${Math.ceil(5 - stopTimer)}s`, vX, vY - 140);
+        }
       }
 
       const speedoCanvas = document.createElement("canvas");
