@@ -36,27 +36,29 @@
       const statusTitle = document.getElementById("status-title");
 
       // --- CONFIGURACIÓ ---
-      const CAR_WIDTH = 160; const CAR_HEIGHT = 80;
+      const CAR_WIDTH = 200; 
+      const CAR_HEIGHT = 110;
       const TREE_WIDTH = 150; const TREE_HEIGHT = 180;
       const SIGN_WIDTH = 80; const SIGN_HEIGHT = 120;
       const LEVEL_DISTANCE = 60000; 
 
-      // --- VARIABLES D'ESTAT ---
       let speed, MAX_SPEED, needleAngleSmooth, bgX, player, enemies, obstacles, signs, trafficLights, pedestrians, continuousLines, isGameOver, distanceCovered;
       let speedLimit = null;
       let stopTimer = 0; 
+      let grassTimer = 0;
 
       function initGame() {
         speed = 2; MAX_SPEED = 20; needleAngleSmooth = Math.PI; bgX = 0; distanceCovered = 0;
-        isGameOver = false; speedLimit = null; stopTimer = 0;
-        player = { x: 150, y: canvas.height / 2 - CAR_HEIGHT / 2, width: CAR_WIDTH, height: CAR_HEIGHT };
+        isGameOver = false; speedLimit = null; stopTimer = 0; grassTimer = 0;
+        player = { x: 150, y: (canvas.height / 2) - (CAR_HEIGHT / 2), width: CAR_WIDTH, height: CAR_HEIGHT };
         enemies = []; obstacles = []; signs = []; trafficLights = []; pedestrians = []; continuousLines = [];
         overlay.style.display = "none";
       }
 
       function resizeCanvas() {
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-        if (!player) initGame();
+        if (player) player.y = (canvas.height / 2) - (CAR_HEIGHT / 2);
+        else initGame();
         drawSpeedometerStatic();
       }
       window.addEventListener("resize", resizeCanvas);
@@ -73,7 +75,7 @@
       setInterval(() => { if(!isGameOver && speed > 0.5) spawnContinuousLine(); }, 8000);
 
       function spawnEnemy() {
-        const lane = Math.random() < 0.5 ? canvas.height/2 - 90 : canvas.height/2 + 30;
+        const lane = Math.random() < 0.5 ? canvas.height/2 - 100 : canvas.height/2 + 20;
         enemies.push({ x: canvas.width + 300, y: lane, width: CAR_WIDTH, height: CAR_HEIGHT, speed: speed + 3 });
       }
       
@@ -104,42 +106,42 @@
         if (speed < 0.5) {
             stopTimer += 1/60; 
             if (stopTimer >= 5) endGame("¡OBSTRUCCIÓ DEL TRÀNSIT!");
-        } else {
-            stopTimer = 0;
-        }
+        } else stopTimer = 0;
 
         distanceCovered += speed * 5;
         if (distanceCovered >= LEVEL_DISTANCE) { winGame(); return; }
 
-        const roadTop = canvas.height / 2 - 180;
-        const roadBottom = canvas.height / 2 + 170;
+        // --- HITBOX DEL CÈSPED MÉS ALLUNYADA ---
+        // Hem passat de 180/170 a 250/240 per donar més marge
+        const roadTop = canvas.height / 2 - 250;
+        const roadBottom = canvas.height / 2 + 240;
         let currentMaxSpeed = MAX_SPEED;
         let lateralSpeed = 7;
 
         if (player.y < roadTop || (player.y + player.height) > roadBottom) {
             currentMaxSpeed = 5; lateralSpeed = 4;    
             if (speed > currentMaxSpeed) speed -= 0.2;
-        }
+            grassTimer += 1/60;
+            if (grassTimer >= 2) endGame("¡FORA DE LA CARRETERA!");
+        } else grassTimer = 0;
 
         let onContinuousLine = false;
         continuousLines.forEach(line => {
           line.x -= speed * 6;
-          // Comprovem si el jugador està al centre de la carretera (on hi ha la línia)
           if (player.x + player.width > line.x && player.x < line.x + line.width) {
-            // El centre de la carretera és a canvas.height/2
-            if (Math.abs((player.y + player.height/2) - (canvas.height/2)) < 60) {
-                onContinuousLine = true;
-            }
+            if (Math.abs((player.y + player.height/2) - (canvas.height/2)) < 60) onContinuousLine = true;
           }
         });
 
-        if (keys["ArrowUp"]) {
-          if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
-          player.y -= lateralSpeed;
-        }
-        if (keys["ArrowDown"]) {
-          if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
-          player.y += lateralSpeed;
+        if (speed >= 0.5) {
+            if (keys["ArrowUp"]) {
+                if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
+                player.y -= lateralSpeed;
+            }
+            if (keys["ArrowDown"]) {
+                if (onContinuousLine) endGame("¡LÍNIA CONTÍNUA!");
+                player.y += lateralSpeed;
+            }
         }
         
         if (keys["ArrowLeft"]) speed = Math.max(0, speed - 0.4);
@@ -169,7 +171,7 @@
             if (pedestrians[i].y < 0) pedestrians.splice(i, 1);
         }
 
-        signs.forEach((s, i) => {
+        signs.forEach(s => {
             s.x -= speed * 6;
             if (player.x > s.x && player.x < s.x + 60) speedLimit = s.limit;
         });
@@ -187,12 +189,9 @@
 
       function checkCollision(r1, r2) {
         if (!r2.x || !r2.width) return false;
-        const marginX = r2.width * 0.15;
-        const marginY = r2.height * 0.40;
-        return r1.x < (r2.x + r2.width - marginX) && 
-               (r1.x + r1.width) > (r2.x + marginX) && 
-               r1.y < (r2.y + r2.height - marginY) && 
-               (r1.y + r1.height) > (r2.y + marginY);
+        const marginX = r2.width * 0.15, marginY = r2.height * 0.40;
+        return r1.x < (r2.x + r2.width - marginX) && (r1.x + r1.width) > (r2.x + marginX) && 
+               r1.y < (r2.y + r2.height - marginY) && (r1.y + r1.height) > (r2.y + marginY);
       }
 
       function winGame() { isGameOver = true; statusTitle.innerText = "NIVELL SUPERAT! 🎉"; statusTitle.style.color = "#2ecc71"; overlay.style.display = "flex"; }
@@ -205,7 +204,6 @@
           ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
         }
 
-        // Dibuixar la línia contínua al centre exacte de la carretera
         continuousLines.forEach(l => {
           ctx.fillStyle = "white";
           ctx.fillRect(l.x, canvas.height / 2 - 5, l.width, 10);
@@ -253,6 +251,11 @@
         ctx.lineTo(vX + Math.cos(needleAngleSmooth)*80, vY + Math.sin(needleAngleSmooth)*80); ctx.stroke();
         ctx.fillStyle = "white"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center"; ctx.fillText(`${Math.floor(speed * 10)} km/h`, vX, vY + 35);
 
+        if (grassTimer > 0.5) {
+            ctx.fillStyle = grassTimer > 1.5 ? "red" : "orange";
+            ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+            ctx.fillText("¡TORNA A LA CARRETERA!", canvas.width / 2, canvas.height / 2 - 150);
+        }
         if (stopTimer > 2) {
             ctx.fillStyle = "yellow"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
             ctx.fillText(`MOU-TE! ${Math.ceil(5 - stopTimer)}s`, vX, vY - 140);
