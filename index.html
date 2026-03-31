@@ -1,284 +1,173 @@
 <!doctype html>
 <html lang="ca">
-  <head>
+<head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RACC - Reaction Driver</title>
+    <title>RACC - Deluxe Reality Check</title>
     <style>
-      body { margin: 0; background: #222; overflow: hidden; font-family: Arial, sans-serif; }
-      canvas { display: block; image-rendering: pixelated; }
-      #ui-overlay {
-        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-        display: none; flex-direction: column; justify-content: center;
-        align-items: center; background: rgba(0,0,0,0.85); color: white; z-index: 100;
-      }
-      .btn {
-        padding: 15px 30px; margin: 10px; font-size: 20px; cursor: pointer;
-        border: none; border-radius: 5px; font-weight: bold; transition: 0.3s;
-      }
-      #btn-retry { background: #27ae60; color: white; }
-      #btn-exit { background: #c0392b; color: white; }
-      .btn:hover { transform: scale(1.1); }
-
-      #mobile-phone {
-        position: absolute; bottom: 20px; right: 20px;
-        width: 240px; height: 200px; background: #e5ddd5;
-        border: 8px solid #333; border-radius: 25px;
-        display: none; flex-direction: column; z-index: 1000;
-        padding: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-      }
-      #mobile-phone h4 { margin: 0 0 8px 0; font-size: 13px; color: #075e54; border-bottom: 1px solid #ccc; padding-bottom: 5px; }
-      #mobile-chat-box { background: white; border-radius: 8px; padding: 10px; flex-grow: 1; font-size: 14px; color: #333; margin-bottom: 10px; border: 1px solid #ddd; box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); }
-      #mobile-input { width: 100%; padding: 8px; border: 1px solid #25D366; border-radius: 5px; box-sizing: border-box; outline: none; font-size: 14px; }
+        body { margin: 0; background: #222; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        canvas { display: block; background: #333; }
+        #ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center;
+            align-items: center; background: rgba(0,0,0,0.9); color: white; z-index: 100;
+        }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 8px; border: none; background: #27ae60; color: white; font-weight: bold; }
+        #error-msg { position: absolute; bottom: 10px; left: 10px; color: #ff4757; font-size: 12px; z-index: 200; }
     </style>
-  </head>
-  <body>
+</head>
+<body>
+    <div id="error-msg"></div>
     <div id="ui-overlay">
-      <h1 id="status-title">NIVELL SUPERAT!</h1>
-      <button id="btn-retry" class="btn">TORNAR A JUGAR</button>
-      <button id="btn-exit" class="btn">SORTIR</button>
-    </div>
-
-    <div id="mobile-phone">
-      <h4>WhatsApp - Mare 📱</h4>
-      <div id="mobile-chat-box">Escriu exactament:<br><b id="target-phrase" style="color: #d63031;"></b></div>
-      <input type="text" id="mobile-input" autocomplete="off" placeholder="Escriu aquí...">
+        <h1 id="status-title">NIVELL SUPERAT!</h1>
+        <button onclick="initGame()" class="btn">TORNAR A JUGAR</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
 
     <script>
-      const canvas = document.getElementById("gameCanvas");
-      const ctx = canvas.getContext("2d");
-      const overlay = document.getElementById("ui-overlay");
-      const statusTitle = document.getElementById("status-title");
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const errorDiv = document.getElementById("error-msg");
 
-      // Configuración
-      const CAR_WIDTH = 200; 
-      const CAR_HEIGHT = 110;
-      const LEVEL_DISTANCE = 100000; 
-      const MAX_SPEED = 20;
-
-      // Variables Globales
-      let speed, needleAngleSmooth, bgX, distanceCovered, player, enemies, obstacles, trafficLights;
-      let isGameOver, isPaused, isPhoneActive, currentPhrase, grassTimer, stopTimer;
-      let keys = {};
-
-      // Carga de Imágenes
-      const bgImg = new Image(); bgImg.src = "images/fondo.png";
-      const treeImg = new Image(); treeImg.src = "images/arbol.png";
-      const carBlue = new Image(); carBlue.src = "images/coche_azul_transparente.png";
-      // Solo cargamos los enemigos en el color original para asegurar estabilidad
-      const carEnemy = new Image(); carEnemy.src = "images/coche_transparente.png";
-
-      const mobileContainer = document.getElementById("mobile-phone");
-      const mobileInput = document.getElementById("mobile-input");
-      const targetPhraseDisplay = document.getElementById("target-phrase");
-      const phrases = ["arribo en 5 minuts", "estic conduint", "ara no puc parlar", "on ets?", "tinc pressa"];
-
-      function initGame() {
-        speed = 2; needleAngleSmooth = Math.PI; bgX = 0; distanceCovered = 0;
-        isGameOver = false; isPaused = false; isPhoneActive = false; grassTimer = 0; stopTimer = 0;
+        // --- GESTIÓ D'IMATGES ---
+        const img = {
+            bg: new Image(),
+            player: new Image(),
+            enemy: new Image(),
+            tree: new Image()
+        };
         
-        player = { x: 150, y: canvas.height/2 - 55, w: CAR_WIDTH, h: CAR_HEIGHT };
-        enemies = []; obstacles = []; trafficLights = [];
-        
-        overlay.style.display = "none";
-        mobileContainer.style.display = "none";
-        mobileInput.value = "";
-        
-        clearTimeout(window.mobileTimeout);
-        window.mobileTimeout = setTimeout(triggerMobile, 5000);
-      }
+        img.bg.src = "images/fondo.png";
+        img.player.src = "images/coche_azul_transparente.png";
+        img.enemy.src = "images/coche_transparente.png";
+        img.tree.src = "images/arbol.png";
 
-      function triggerMobile() {
-        if (isGameOver || isPaused || isPhoneActive) return;
-        isPhoneActive = true;
-        currentPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-        targetPhraseDisplay.innerText = currentPhrase;
-        mobileContainer.style.display = "flex";
-        mobileInput.focus();
-      }
-
-      mobileInput.onkeydown = (e) => {
-        if (e.key === "Enter" && isPhoneActive) {
-          if (mobileInput.value.trim().toLowerCase() === currentPhrase.toLowerCase()) {
-            isPhoneActive = false;
-            mobileContainer.style.display = "none";
-            window.mobileTimeout = setTimeout(triggerMobile, 6000);
-          }
-        }
-      };
-
-      // Generadores automáticos
-      setInterval(() => { if(!isGameOver && !isPaused && speed > 0.5) spawnEnemy(); }, 3500);
-      setInterval(() => { if(!isGameOver && !isPaused && speed > 0.5) spawnObstacle(); }, 5000);
-      setInterval(() => { if(!isGameOver && !isPaused) spawnTrafficLight(); }, 12000);
-
-      function spawnEnemy() {
-        const lanes = [canvas.height/2-180, canvas.height/2-80, canvas.height/2+20, canvas.height/2+120];
-        enemies.push({ x: canvas.width + 300, y: lanes[Math.floor(Math.random()*4)], w: CAR_WIDTH, h: CAR_HEIGHT, speed: speed + (Math.random() * 3 + 1) });
-      }
-
-      function spawnObstacle() {
-        let yPos = Math.random() < 0.5 ? 40 : canvas.height - 220;
-        obstacles.push({ x: canvas.width + 200, y: yPos, w: 150, h: 180 });
-      }
-
-      function spawnTrafficLight() {
-        trafficLights.push({ x: canvas.width + 800, y: canvas.height/2 - 350, state: 'green', timer: 0 });
-      }
-
-      // Hitbox ajustada (más justa)
-      function checkCollision(r1, r2) {
-        // Reducimos el área de colisión para ignorar bordes transparentes
-        const paddingW = 40; 
-        const paddingH = 30;
-        return r1.x < r2.x + (r2.w || 100) - paddingW &&
-               r1.x + r1.w > r2.x + paddingW &&
-               r1.y < r2.y + (r2.h || 100) - paddingH &&
-               r1.y + r1.h > r2.y + paddingH;
-      }
-
-      function update() {
-        if (isGameOver || isPaused) return;
-
-        distanceCovered += speed * 5;
-        if (distanceCovered >= LEVEL_DISTANCE) winGame();
-
-        // Regla de los 10 segundos parado
-        if (speed < 0.5) {
-          stopTimer += 1/60;
-          if (stopTimer > 10) endGame("T'HAS QUEDAT PARAT MASSA TEMPS!");
-        } else { stopTimer = 0; }
-
-        const roadTop = canvas.height / 2 - 300;
-        const roadBottom = canvas.height / 2 + 290;
-        
-        // Césped y controles laterales
-        let lateralSpeed = 7;
-        if (player.y < roadTop || (player.y + player.h) > roadBottom) {
-          if (speed > 5) speed -= 0.2;
-          grassTimer += 1/60;
-          if (grassTimer > 2.5) endGame("¡FORA DE LA CARRETERA!");
-          lateralSpeed = 4;
-        } else { grassTimer = 0; }
-
-        // --- BLOQUEO LATERAL CUANDO ESTÁS PARADO ---
-        if (speed >= 0.5) {
-          if (keys["ArrowUp"]) player.y -= lateralSpeed;
-          if (keys["ArrowDown"]) player.y += lateralSpeed;
-        }
-
-        if (keys["ArrowLeft"]) speed = Math.max(0, speed - 0.4);
-        if (keys["ArrowRight"]) speed = Math.min(MAX_SPEED, speed + 0.15);
-
-        bgX = (bgX + speed * 6) % canvas.width;
-        player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
-
-        // Semáforos
-        trafficLights.forEach(tl => {
-          tl.x -= speed * 6; tl.timer++;
-          if (tl.timer < 300) tl.state = 'green';
-          else if (tl.timer < 450) tl.state = 'amber';
-          else if (tl.timer < 1000) tl.state = 'red'; else tl.timer = 0;
-          
-          if (tl.state === 'red' && player.x + player.w > tl.x && player.x < tl.x + 80) {
-            endGame("¡SEMÀFOR EN VERMELL!");
-          }
+        // Verificar si les imatges fallen
+        Object.keys(img).forEach(key => {
+            img[key].onerror = () => {
+                errorDiv.innerHTML += `⚠️ Error: No es troba "${img[key].src}"<br>`;
+            };
         });
 
-        // Enemigos y Obstáculos
-        [enemies, obstacles].forEach(list => {
-          for (let i = list.length - 1; i >= 0; i--) {
-            list[i].x -= (speed * 6) + (list[i].speed || 0);
-            if (checkCollision(player, list[i])) endGame("¡XOC!");
-            if (list[i].x < -500) list.splice(i, 1);
-          }
-        });
-      }
+        let s = {
+            speed: 2, dist: 0, bgX: 0, py: 300, 
+            enemies: [], obstacles: [], keys: {},
+            over: false, spawnTimer: 0, needleAng: Math.PI
+        };
 
-      function winGame() { isGameOver = true; statusTitle.innerText = "NIVELL SUPERAT! 🎉"; statusTitle.style.color = "#2ecc71"; overlay.style.display = "flex"; }
-      function endGame(reason) { isGameOver = true; statusTitle.innerText = reason; statusTitle.style.color = "#e74c3c"; overlay.style.display = "flex"; }
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        if (bgImg.complete) {
-          ctx.drawImage(bgImg, -bgX, 0, canvas.width, canvas.height);
-          ctx.drawImage(bgImg, canvas.width - bgX, 0, canvas.width, canvas.height);
+        function initGame() {
+            s.speed = 3; s.dist = 0; s.over = false;
+            s.py = canvas.height / 2;
+            s.enemies = []; s.obstacles = [];
+            s.spawnTimer = 0;
+            document.getElementById("ui-overlay").style.display = "none";
         }
 
-        // Dibujar Semáforos y PASOS DE CEBRA
-        trafficLights.forEach(tl => {
-          // Pas de cebra
-          ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
-          for (let i = 0; i < 10; i++) {
-            ctx.fillRect(tl.x, (canvas.height/2 - 280) + (i * 60), 120, 30);
-          }
-          // Poste y semáforo
-          ctx.fillStyle = "#333"; ctx.fillRect(tl.x + 120, tl.y, 50, 130);
-          ctx.fillStyle = tl.state === 'red' ? "red" : "#300"; ctx.beginPath(); ctx.arc(tl.x+145, tl.y+30, 15, 0, 7); ctx.fill();
-          ctx.fillStyle = tl.state === 'amber' ? "orange" : "#330"; ctx.beginPath(); ctx.arc(tl.x+145, tl.y+65, 15, 0, 7); ctx.fill();
-          ctx.fillStyle = tl.state === 'green' ? "lime" : "#030"; ctx.beginPath(); ctx.arc(tl.x+145, tl.y+100, 15, 0, 7); ctx.fill();
-        });
+        window.onkeydown = (e) => s.keys[e.code] = true;
+        window.onkeyup = (e) => s.keys[e.code] = false;
 
-        // Dibujar Otros
-        obstacles.forEach(o => { if (treeImg.complete) ctx.drawImage(treeImg, o.x, o.y, o.w, o.h); });
-        enemies.forEach(e => { if (carEnemy.complete) ctx.drawImage(carEnemy, e.x, e.y, e.w, e.h); });
-        
-        // Dibujar Jugador
-        if (player && carBlue.complete) ctx.drawImage(carBlue, player.x, player.y, player.w, player.h);
+        function update() {
+            if (s.over) return;
 
-        // --- UI RECUPERADA (Detalles Completos) ---
-        // Barra de progreso
-        const barW = 400, barX = canvas.width/2 - 200, progress = distanceCovered/LEVEL_DISTANCE;
-        ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(barX - 10, 20, barW + 20, 40);
-        ctx.fillStyle = "#3498db"; ctx.fillRect(barX, 25, barW * Math.min(1, progress), 30);
-        ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "center";
-        ctx.fillText(`${Math.floor(progress * 100)}% COMPLETAT`, canvas.width/2, 48);
+            // Moviment i Distància
+            s.dist += s.speed * 5;
+            if (s.dist >= 100000) {
+                s.over = true;
+                document.getElementById("status-title").innerText = "NIVELL SUPERAT! 🎉";
+                document.getElementById("ui-overlay").style.display = "flex";
+            }
 
-        // Velocímetro Detallado
-        const vX = 150, vY = canvas.height - 60;
-        ctx.drawImage(speedoCanvas, 0, canvas.height - 250);
-        const targetAngle = Math.PI + (speed / 20) * Math.PI;
-        needleAngleSmooth += (targetAngle - needleAngleSmooth) * 0.1;
-        ctx.strokeStyle = "red"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(vX, vY);
-        ctx.lineTo(vX + Math.cos(needleAngleSmooth)*90, vY + Math.sin(needleAngleSmooth)*90); ctx.stroke();
-        ctx.fillStyle = "white"; ctx.font = "bold 26px Arial"; ctx.fillText(`${Math.floor(speed * 10)} km/h`, vX, vY + 45);
-        
-        if (isPaused) {
-          ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillRect(0,0,canvas.width,canvas.height);
-          ctx.fillStyle = "white"; ctx.font = "bold 40px Arial"; ctx.fillText("JOC EN PAUSA", canvas.width/2, canvas.height/2);
+            // Controls
+            if (s.keys["ArrowUp"]) s.py -= 7;
+            if (s.keys["ArrowDown"]) s.py += 7;
+            if (s.keys["ArrowLeft"]) s.speed = Math.max(1, s.speed - 0.2);
+            if (s.keys["ArrowRight"]) s.speed = Math.min(20, s.speed + 0.1);
+
+            s.bgX = (s.bgX + s.speed * 6) % canvas.width;
+            s.py = Math.max(80, Math.min(canvas.height - 180, s.py));
+
+            // Generar cotxes enemics
+            s.spawnTimer++;
+            if (s.spawnTimer > 100) {
+                s.enemies.push({ x: canvas.width + 200, y: 150 + Math.random() * (canvas.height - 300), w: 190, h: 100 });
+                s.spawnTimer = 0;
+            }
+
+            // Lògica d'enemics
+            s.enemies = s.enemies.filter(e => {
+                e.x -= (s.speed * 6) + 3;
+                // Col·lisió ajustada
+                if (150 < e.x + 160 && 150 + 160 > e.x && s.py < e.y + 75 && s.py + 75 > e.y) {
+                    s.over = true;
+                    document.getElementById("status-title").innerText = "¡HAS XOCAT! 💥";
+                    document.getElementById("ui-overlay").style.display = "flex";
+                }
+                return e.x > -400;
+            });
         }
-      }
 
-      // Pre-renderizar velocímetro estático (Marcas y Números)
-      const speedoCanvas = document.createElement("canvas");
-      const speedoCtx = speedoCanvas.getContext("2d");
-      speedoCanvas.width = 300; speedoCanvas.height = 250;
-      function drawSpeedometerStatic() {
-        const c = speedoCtx; c.clearRect(0,0,300,250);
-        c.beginPath(); c.lineWidth = 10; c.strokeStyle = "rgba(255,255,255,0.9)"; 
-        c.arc(150, 190, 110, Math.PI, 2 * Math.PI); c.stroke();
-        
-        // Dibujar marcas y números
-        for (let i = 0; i <= 20; i += 2) {
-          const a = Math.PI + (i / 20) * Math.PI;
-          c.fillStyle = "white"; c.font = "bold 16px Arial"; c.textAlign = "center";
-          c.fillText(i * 10, 150 + Math.cos(a)*85, 190 + Math.sin(a)*85 + 5);
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. DIBUIXAR ASFALT / FONDO
+            if (img.bg.complete && img.bg.width > 0) {
+                ctx.drawImage(img.bg, -s.bgX, 0, canvas.width, canvas.height);
+                ctx.drawImage(img.bg, canvas.width - s.bgX, 0, canvas.width, canvas.height);
+            } else {
+                ctx.fillStyle = "#444"; ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.fillStyle = "#555"; ctx.fillRect(0, canvas.height/2-200, canvas.width, 400);
+            }
+
+            // 2. DIBUIXAR ENEMICS (Sense quadrats rojos!)
+            s.enemies.forEach(e => {
+                if (img.enemy.complete && img.enemy.width > 0) {
+                    ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h);
+                }
+            });
+            
+            // 3. JUGADOR
+            if (img.player.complete && img.player.width > 0) {
+                ctx.drawImage(img.player, 150, s.py, 190, 100);
+            }
+
+            // 4. UI: BARRA DE PROGRÉS (Dalt al centre)
+            const barW = 400, barX = canvas.width/2 - 200;
+            ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(barX, 20, barW, 40);
+            ctx.fillStyle = "#3498db"; ctx.fillRect(barX + 5, 25, (barW - 10) * (s.dist/100000), 30);
+            ctx.fillStyle = "white"; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+            ctx.fillText(`${Math.floor((s.dist/100000)*100)}% COMPLETAT`, canvas.width/2, 45);
+
+            // 5. UI: VELOCÍMETRE ANALÒGIC (Baix esquerra)
+            const vX = 140, vY = canvas.height - 80;
+            // Arc blanc
+            ctx.strokeStyle = "white"; ctx.lineWidth = 4; ctx.beginPath();
+            ctx.arc(vX, vY, 80, Math.PI, 2*Math.PI); ctx.stroke();
+            // Agulla roja
+            let targetAng = Math.PI + (s.speed/20)*Math.PI;
+            s.needleAng += (targetAng - s.needleAng) * 0.1;
+            ctx.strokeStyle = "#ff4757"; ctx.lineWidth = 5; ctx.beginPath();
+            ctx.moveTo(vX, vY); ctx.lineTo(vX + Math.cos(s.needleAng)*70, vY + Math.sin(s.needleAng)*70);
+            ctx.stroke();
+            // Text Digital
+            ctx.fillStyle = "white"; ctx.font = "bold 22px Monospace";
+            ctx.fillText(`${Math.floor(s.speed*10)} km/h`, vX, vY + 40);
         }
-      }
 
-      window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; drawSpeedometerStatic(); };
-      document.onkeydown = (e) => { keys[e.key] = true; if(e.key === "Escape") isPaused = !isPaused; };
-      document.onkeyup = (e) => keys[e.key] = false;
-      document.getElementById("btn-retry").onclick = initGame;
-      document.getElementById("btn-exit").onclick = () => window.location.reload();
+        function loop() {
+            update(); draw();
+            requestAnimationFrame(loop);
+        }
 
-      function loop() { update(); draw(); requestAnimationFrame(loop); }
-      
-      window.onload = () => { window.onresize(); initGame(); loop(); };
+        window.onload = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initGame(); loop();
+        };
+
+        window.onresize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
     </script>
-  </body>
+</body>
 </html>
