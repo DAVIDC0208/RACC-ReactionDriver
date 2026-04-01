@@ -2,24 +2,55 @@
 <html lang="ca">
 <head>
     <meta charset="UTF-8" />
-    <title>RACC - Deluxe Reality Check</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RACC - Reality Check Pro</title>
     <style>
-        body { margin: 0; background: #222; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        canvas { display: block; background: #333; }
-        #ui-overlay {
+        body { margin: 0; background: #222; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        canvas { display: block; }
+        #ui-overlay, #pause-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             display: none; flex-direction: column; justify-content: center;
-            align-items: center; background: rgba(0,0,0,0.9); color: white; z-index: 100;
+            align-items: center; background: rgba(0,0,0,0.85); color: white; z-index: 100;
+            text-align: center;
         }
-        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 8px; border: none; background: #27ae60; color: white; font-weight: bold; }
-        #error-msg { position: absolute; bottom: 10px; left: 10px; color: #ff4757; font-size: 12px; z-index: 200; }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 8px; border: none; background: #27ae60; color: white; font-weight: bold; margin-top: 20px; }
+        
+        /* Estilo del Móvil a la Derecha */
+        #mobile-container {
+            position: absolute; bottom: -400px; right: 30px; 
+            width: 250px; height: 350px; background: #ebebeb; border: 8px solid #333;
+            border-radius: 30px; z-index: 50; transition: bottom 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: -10px 0 50px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column;
+        }
+        #mobile-container.active { bottom: 30px; }
+        .chat-header { background: #075e54; color: white; padding: 10px; font-size: 14px; display: flex; justify-content: space-between; }
+        .chat-body { flex: 1; padding: 10px; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-size: cover; }
+        .message { background: white; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; align-self: flex-start; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); color: #333; }
+        .close-mobile { background: #e74c3c; color: white; border: none; padding: 12px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="error-msg"></div>
     <div id="ui-overlay">
         <h1 id="status-title">NIVELL SUPERAT!</h1>
-        <button onclick="initGame()" class="btn">TORNAR A JUGAR</button>
+        <p id="status-desc"></p>
+        <button onclick="initGame()" class="btn">TORNAR A PROVAR</button>
+    </div>
+
+    <div id="pause-overlay">
+        <h1 style="color: #f1c40f;">JOC EN PAUSA</h1>
+        <button onclick="togglePause()" class="btn">CONTINUAR</button>
+    </div>
+
+    <div id="mobile-container">
+        <div class="chat-header">
+            <span>Mama ❤️</span>
+            <span style="font-weight: bold;">En línia</span>
+        </div>
+        <div class="chat-body">
+            <div class="message">On ets? Recorda comprar el pa! 🥖</div>
+            <div class="message">Respon ràpid que és urgent!</div>
+        </div>
+        <button class="close-mobile" onclick="closeMobile()">TANCAR MÒBIL (M)</button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -27,147 +58,193 @@
     <script>
         const canvas = document.getElementById("gameCanvas");
         const ctx = canvas.getContext("2d");
-        const errorDiv = document.getElementById("error-msg");
 
-        // --- GESTIÓ D'IMATGES ---
-        const img = {
-            bg: new Image(),
-            player: new Image(),
-            enemy: new Image(),
-            tree: new Image()
-        };
-        
+        const img = { bg: new Image(), player: new Image(), enemy: new Image() };
         img.bg.src = "images/fondo.png";
         img.player.src = "images/coche_azul_transparente.png";
-        img.enemy.src = "images/coche_transparente.png";
-        img.tree.src = "images/arbol.png";
-
-        // Verificar si les imatges fallen
-        Object.keys(img).forEach(key => {
-            img[key].onerror = () => {
-                errorDiv.innerHTML += `⚠️ Error: No es troba "${img[key].src}"<br>`;
-            };
-        });
+        img.enemy.src = "images/coche_rojo_transparente.png";
 
         let s = {
-            speed: 2, dist: 0, bgX: 0, py: 300, 
-            enemies: [], obstacles: [], keys: {},
-            over: false, spawnTimer: 0, needleAng: Math.PI
+            speed: 4, dist: 0, bgX: 0, py: 300, 
+            enemies: [], signs: [], keys: {}, 
+            over: false, paused: false,
+            spawnTimer: 0, signTimer: 0, mobileTimer: 0,
+            currentLimit: 120, mobileActive: false, needleAng: Math.PI
         };
 
         function initGame() {
-            s.speed = 3; s.dist = 0; s.over = false;
+            s.speed = 4; s.dist = 0; s.over = false; s.paused = false;
             s.py = canvas.height / 2;
-            s.enemies = []; s.obstacles = [];
-            s.spawnTimer = 0;
+            s.enemies = []; s.signs = [];
+            s.currentLimit = 120;
+            s.spawnTimer = 0; s.signTimer = 0; s.mobileTimer = 0;
+            s.mobileActive = false;
             document.getElementById("ui-overlay").style.display = "none";
+            document.getElementById("pause-overlay").style.display = "none";
+            document.getElementById("mobile-container").classList.remove("active");
         }
 
-        window.onkeydown = (e) => s.keys[e.code] = true;
+        function closeMobile() {
+            s.mobileActive = false;
+            document.getElementById("mobile-container").classList.remove("active");
+        }
+
+        function togglePause() {
+            if (s.over) return;
+            s.paused = !s.paused;
+            document.getElementById("pause-overlay").style.display = s.paused ? "flex" : "none";
+        }
+
+        window.onkeydown = (e) => {
+            if (e.code === "Escape") togglePause();
+            if (e.code === "KeyM") closeMobile();
+            s.keys[e.code] = true;
+        };
         window.onkeyup = (e) => s.keys[e.code] = false;
 
-        function update() {
-            if (s.over) return;
+        document.addEventListener("visibilitychange", () => { if (document.hidden && !s.paused) togglePause(); });
 
-            // Moviment i Distància
-            s.dist += s.speed * 5;
-            if (s.dist >= 100000) {
-                s.over = true;
-                document.getElementById("status-title").innerText = "NIVELL SUPERAT! 🎉";
-                document.getElementById("ui-overlay").style.display = "flex";
+        canvas.addEventListener('touchstart', (e) => { handleTouch(e); }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => { handleTouch(e); e.preventDefault(); }, {passive: false});
+        function handleTouch(e) {
+            if (s.over || s.paused) return;
+            const touch = e.touches[0];
+            if (touch.clientX > canvas.width / 2) s.keys["ArrowRight"] = true;
+            else s.keys["ArrowLeft"] = true;
+            if (s.speed > 0.5) s.py = touch.clientY - 45;
+        }
+        canvas.addEventListener('touchend', () => { s.keys["ArrowRight"] = false; s.keys["ArrowLeft"] = false; });
+
+        function update() {
+            if (s.over || s.paused) return;
+
+            if (s.keys["ArrowLeft"]) s.speed = Math.max(0, s.speed - 0.15);
+            if (s.keys["ArrowRight"]) s.speed = Math.min(20, s.speed + 0.1);
+            if (s.speed > 0.5) {
+                if (s.keys["ArrowUp"]) s.py -= 8;
+                if (s.keys["ArrowDown"]) s.py += 8;
             }
 
-            // Controls
-            if (s.keys["ArrowUp"]) s.py -= 7;
-            if (s.keys["ArrowDown"]) s.py += 7;
-            if (s.keys["ArrowLeft"]) s.speed = Math.max(1, s.speed - 0.2);
-            if (s.keys["ArrowRight"]) s.speed = Math.min(20, s.speed + 0.1);
+            s.dist += s.speed * 5;
+            s.bgX = (s.bgX + s.speed * 7) % canvas.width;
+            s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
 
-            s.bgX = (s.bgX + s.speed * 6) % canvas.width;
-            s.py = Math.max(80, Math.min(canvas.height - 180, s.py));
+            // Lògica del Mòbil (Apareix als 5 segons aprox)
+            if (!s.mobileActive && s.dist > 1500) {
+                s.mobileTimer++;
+                if (s.mobileTimer > 300) { 
+                    s.mobileActive = true;
+                    document.getElementById("mobile-container").classList.add("active");
+                    s.mobileTimer = -2000; // Gran marge abans que pugui tornar a sortir
+                }
+            }
 
-            // Generar cotxes enemics
-            s.spawnTimer++;
-            if (s.spawnTimer > 100) {
-                s.enemies.push({ x: canvas.width + 200, y: 150 + Math.random() * (canvas.height - 300), w: 190, h: 100 });
+            if (++s.spawnTimer > 350) { 
+                s.enemies.push({ x: canvas.width + 200, y: 180 + Math.random()*(canvas.height-450), w: 180, h: 90 });
                 s.spawnTimer = 0;
             }
+            if (++s.signTimer > 700) {
+                const limits = [30, 50, 90, 120];
+                s.signs.push({ x: canvas.width + 100, y: 100, limit: limits[Math.floor(Math.random()*limits.length)] });
+                s.signTimer = 0;
+            }
 
-            // Lògica d'enemics
+            const currentKmh = Math.floor(s.speed * 10);
+            if (currentKmh > s.currentLimit) gameOver(`MULTA! Has superat el límit de ${s.currentLimit} km/h`);
+
             s.enemies = s.enemies.filter(e => {
-                e.x -= (s.speed * 6) + 3;
-                // Col·lisió ajustada
-                if (150 < e.x + 160 && 150 + 160 > e.x && s.py < e.y + 75 && s.py + 75 > e.y) {
-                    s.over = true;
-                    document.getElementById("status-title").innerText = "¡HAS XOCAT! 💥";
-                    document.getElementById("ui-overlay").style.display = "flex";
+                e.x -= (s.speed * 7) + 2;
+                let hit = 35;
+                let pBox = { x: 150 + hit, y: s.py + hit, w: 180 - hit*2, h: 90 - hit*2 };
+                let eBox = { x: e.x + hit, y: e.y + hit, w: 180 - hit*2, h: 90 - hit*2 };
+                if (pBox.x < eBox.x + eBox.w && pBox.x + pBox.w > eBox.x && pBox.y < eBox.y + eBox.h && pBox.y + pBox.h > eBox.y) {
+                    gameOver("¡HAS XOCAT! 💥");
                 }
-                return e.x > -400;
+                return e.x > -200;
             });
+
+            s.signs = s.signs.filter(sign => {
+                sign.x -= (s.speed * 7);
+                if (sign.x < 150 && sign.x > 100) s.currentLimit = sign.limit;
+                return sign.x > -100;
+            });
+
+            if (s.dist >= 100000) gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+        }
+
+        function gameOver(msg, win = false) {
+            s.over = true;
+            document.getElementById("status-title").innerText = win ? "ENHORABONA!" : "FI DEL JOC";
+            document.getElementById("status-desc").innerText = msg;
+            document.getElementById("ui-overlay").style.display = "flex";
         }
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // 1. DIBUIXAR ASFALT / FONDO
-            if (img.bg.complete && img.bg.width > 0) {
+            if (img.bg.complete) {
                 ctx.drawImage(img.bg, -s.bgX, 0, canvas.width, canvas.height);
                 ctx.drawImage(img.bg, canvas.width - s.bgX, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = "#444"; ctx.fillRect(0,0,canvas.width,canvas.height);
-                ctx.fillStyle = "#555"; ctx.fillRect(0, canvas.height/2-200, canvas.width, 400);
             }
 
-            // 2. DIBUIXAR ENEMICS (Sense quadrats rojos!)
-            s.enemies.forEach(e => {
-                if (img.enemy.complete && img.enemy.width > 0) {
-                    ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h);
-                }
+            s.signs.forEach(sign => {
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(sign.x, sign.y, 35, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "red"; ctx.lineWidth = 6; ctx.stroke();
+                ctx.fillStyle = "black"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+                ctx.fillText(sign.limit, sign.x, sign.y + 8);
             });
-            
-            // 3. JUGADOR
-            if (img.player.complete && img.player.width > 0) {
-                ctx.drawImage(img.player, 150, s.py, 190, 100);
-            }
 
-            // 4. UI: BARRA DE PROGRÉS (Dalt al centre)
-            const barW = 400, barX = canvas.width/2 - 200;
-            ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(barX, 20, barW, 40);
-            ctx.fillStyle = "#3498db"; ctx.fillRect(barX + 5, 25, (barW - 10) * (s.dist/100000), 30);
-            ctx.fillStyle = "white"; ctx.font = "bold 16px Arial"; ctx.textAlign = "center";
+            s.enemies.forEach(e => ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h));
+            ctx.drawImage(img.player, 150, s.py, 180, 90);
+
+            // BARRA PROGRÉS
+            const bW = 350, bX = canvas.width/2 - 175;
+            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.strokeRect(bX-2, 23, bW+4, 34);
+            ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(bX, 25, bW, 30);
+            ctx.fillStyle = "#3498db"; ctx.fillRect(bX+2, 27, (bW-4)*(s.dist/100000), 26);
+            ctx.fillStyle = "white"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center";
             ctx.fillText(`${Math.floor((s.dist/100000)*100)}% COMPLETAT`, canvas.width/2, 45);
 
-            // 5. UI: VELOCÍMETRE ANALÒGIC (Baix esquerra)
-            const vX = 140, vY = canvas.height - 80;
-            // Arc blanc
-            ctx.strokeStyle = "white"; ctx.lineWidth = 4; ctx.beginPath();
-            ctx.arc(vX, vY, 80, Math.PI, 2*Math.PI); ctx.stroke();
-            // Agulla roja
+            // SEÑAL UI
+            ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(60, 60, 35, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle = "red"; ctx.lineWidth = 5; ctx.stroke();
+            ctx.fillStyle = "black"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+            ctx.fillText(s.currentLimit, 60, 68);
+
+            // VELOCÍMETRE AMB DETALLS
+            const vX = 120, vY = canvas.height - 100, rad = 90;
+            ctx.beginPath(); ctx.arc(vX, vY, rad, Math.PI, 2*Math.PI);
+            ctx.strokeStyle = "rgba(255,255,255,0.2)"; ctx.lineWidth = 12; ctx.stroke();
+
+            // Ticks i Números
+            for(let i=0; i<=200; i+=20) {
+                let ang = Math.PI + (i/200) * Math.PI;
+                let isBig = i % 40 === 0;
+                ctx.strokeStyle = isBig ? "white" : "rgba(255,255,255,0.5)";
+                ctx.lineWidth = isBig ? 3 : 1;
+                ctx.beginPath();
+                ctx.moveTo(vX + Math.cos(ang)*rad, vY + Math.sin(ang)*rad);
+                ctx.lineTo(vX + Math.cos(ang)*(rad - (isBig?15:8)), vY + Math.sin(ang)*(rad - (isBig?15:8)));
+                ctx.stroke();
+                if(isBig) {
+                    ctx.fillStyle = "white"; ctx.font = "10px Arial"; ctx.textAlign = "center";
+                    ctx.fillText(i, vX + Math.cos(ang)*(rad-28), vY + Math.sin(ang)*(rad-28));
+                }
+            }
+
             let targetAng = Math.PI + (s.speed/20)*Math.PI;
             s.needleAng += (targetAng - s.needleAng) * 0.1;
-            ctx.strokeStyle = "#ff4757"; ctx.lineWidth = 5; ctx.beginPath();
-            ctx.moveTo(vX, vY); ctx.lineTo(vX + Math.cos(s.needleAng)*70, vY + Math.sin(s.needleAng)*70);
-            ctx.stroke();
-            // Text Digital
-            ctx.fillStyle = "white"; ctx.font = "bold 22px Monospace";
-            ctx.fillText(`${Math.floor(s.speed*10)} km/h`, vX, vY + 40);
+            ctx.strokeStyle = "#ff4757"; ctx.lineWidth = 4; ctx.lineCap = "round";
+            ctx.beginPath(); ctx.moveTo(vX, vY); 
+            ctx.lineTo(vX + Math.cos(s.needleAng)*(rad-10), vY + Math.sin(s.needleAng)*(rad-10)); ctx.stroke();
+            
+            ctx.fillStyle = "white"; ctx.font = "bold 28px Monospace"; ctx.textAlign = "center";
+            ctx.fillText(Math.floor(s.speed * 10), vX, vY + 30);
+            ctx.font = "12px Arial"; ctx.fillText("km/h", vX, vY + 50);
         }
 
-        function loop() {
-            update(); draw();
-            requestAnimationFrame(loop);
-        }
-
-        window.onload = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            initGame(); loop();
-        };
-
-        window.onresize = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        };
+        function loop() { update(); draw(); requestAnimationFrame(loop); }
+        window.onload = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initGame(); loop(); };
+        window.onresize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
     </script>
 </body>
 </html>
