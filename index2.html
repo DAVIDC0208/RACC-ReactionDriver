@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RACC - Reaction Driver | NIVELL 2</title>
+    <style>
+        body { margin: 0; background: #111; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        canvas { display: block; }
+        
+        /* Avisos de proximidad */
+        #alert-box { 
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(231, 76, 60, 0.9); color: white; padding: 10px 20px;
+            border-radius: 5px; font-weight: bold; display: none; z-index: 200;
+            animation: blink 0.5s infinite;
+        }
+        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        #ui-overlay, #pause-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center;
+            align-items: center; background: rgba(0,0,0,0.9); color: white; z-index: 100;
+            text-align: center;
+        }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 8px; border: none; background: #27ae60; color: white; font-weight: bold; margin-top: 10px; width: 250px; }
+        .btn-danger { background: #e74c3c; }
+        
+        #mobile-container {
+            position: absolute; bottom: -500px; right: 30px; 
+            width: 250px; height: 380px; background: #ebebeb; border: 8px solid #333;
+            border-radius: 30px; z-index: 50; transition: bottom 0.5s;
+            box-shadow: -10px 0 50px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column;
+        }
+        #mobile-container.active { bottom: 30px; }
+        .chat-header { background: #075e54; color: white; padding: 10px; font-size: 14px; }
+        .chat-body { flex: 1; padding: 10px; background: #e5ddd5; }
+        .message { background: white; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 12px; color: #333; }
+        .close-mobile { background: #e74c3c; color: white; border: none; padding: 12px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div id="alert-box">⚠️ ATENCIÓ: COTXE A PROP!</div>
+
+    <div id="ui-overlay">
+        <h1 id="status-title">NIVELL SUPERAT!</h1>
+        <p id="status-desc"></p>
+        <button onclick="initGame()" class="btn">TORNAR A PROVAR</button>
+        <button onclick="goToMenu()" class="btn btn-danger">MENÚ DE JOCS</button>
+    </div>
+
+    <div id="pause-overlay">
+        <h1 style="color: #f1c40f;">JOC EN PAUSA</h1>
+        <button onclick="togglePause()" class="btn">CONTINUAR</button>
+        <button onclick="goToMenu()" class="btn btn-danger">TORNAR AL MENÚ</button>
+    </div>
+
+    <div id="mobile-container">
+        <div class="chat-header">Grup Amics 🍻</div>
+        <div class="chat-body">
+            <div class="message">On ets? Respon ja! 📱</div>
+        </div>
+        <button class="close-mobile" onclick="closeMobile()">TANCAR MÒBIL (M)</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const img = { bg: new Image(), player: new Image(), enemy: new Image() };
+        img.bg.src = "images/fondo.png";
+        img.player.src = "images/coche_azul_transparente.png";
+        img.enemy.src = "images/coche_rojo_transparente.png";
+
+        let s = {
+            speed: 5, dist: 0, bgX: 0, py: 300, 
+            enemies: [], signs: [], keys: {}, 
+            over: false, paused: false,
+            spawnTimer: 0, signTimer: 0,
+            currentLimit: 120, mobileActive: false,
+            targetDist: 150000, // Duración media-larga
+            finishLineX: -1 // Posición de la meta
+        };
+
+        function initGame() {
+            s.speed = 5; s.dist = 0; s.over = false; s.paused = false;
+            s.py = canvas.height / 2;
+            s.enemies = []; s.signs = [];
+            s.currentLimit = 120;
+            s.mobileActive = false;
+            s.finishLineX = -1;
+            document.getElementById("ui-overlay").style.display = "none";
+            document.getElementById("pause-overlay").style.display = "none";
+            document.getElementById("mobile-container").classList.remove("active");
+        }
+
+        function goToMenu() { window.location.href = "https://henryjoe06.github.io/racc-reaction-drive/pagina-de-juegos/index.html"; }
+        function closeMobile() { 
+            s.mobileActive = false; 
+            document.getElementById("mobile-container").classList.remove("active");
+        }
+
+        window.onkeydown = (e) => {
+            if (e.code === "Escape") togglePause();
+            if (e.code === "KeyM") closeMobile();
+            s.keys[e.code] = true;
+        };
+        window.onkeyup = (e) => s.keys[e.code] = false;
+
+        function togglePause() {
+            if (s.over) return;
+            s.paused = !s.paused;
+            document.getElementById("pause-overlay").style.display = s.paused ? "flex" : "none";
+        }
+
+        function update() {
+            if (s.over || s.paused) return;
+
+            if (s.keys["ArrowLeft"]) s.speed = Math.max(0, s.speed - 0.15);
+            if (s.keys["ArrowRight"]) s.speed = Math.min(20, s.speed + 0.1);
+            if (s.speed > 0.5) {
+                if (s.keys["ArrowUp"]) s.py -= 8;
+                if (s.keys["ArrowDown"]) s.py += 8;
+            }
+
+            s.dist += s.speed * 5;
+            
+            // CARRETERA MÉS LENTA: He bajado el multiplicador de s.speed de 7 a 4
+            s.bgX = (s.bgX + s.speed * 4) % canvas.width;
+            s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
+
+            // Lógica de Móvil (Aparece aleatoriamente)
+            if (!s.mobileActive && Math.random() > 0.998) {
+                s.mobileActive = true;
+                document.getElementById("mobile-container").classList.add("active");
+            }
+
+            // Enemigos (Más frecuentes en nivel 2)
+            if (++s.spawnTimer > 150 && s.dist < s.targetDist - 5000) { 
+                s.enemies.push({ x: canvas.width + 200, y: 180 + Math.random()*(canvas.height-450), w: 180, h: 90 });
+                s.spawnTimer = 0;
+            }
+
+            // Señales
+            if (++s.signTimer > 700) {
+                const limits = [50, 60, 80, 100, 120]; 
+                s.signs.push({ x: canvas.width + 100, y: 100, limit: limits[Math.floor(Math.random()*limits.length)] });
+                s.signTimer = 0;
+            }
+
+            // Colisiones y AVISO DE PROXIMIDAD
+            let showAlert = false;
+            s.enemies = s.enemies.filter(e => {
+                e.x -= (s.speed * 4) + 4; // Ajustado velocidad relativa
+                
+                // Hitbox más grande para nivel 2 (más difícil esquivar)
+                let hit = 20; 
+                let pBox = { x: 150 + hit, y: s.py + hit, w: 180 - hit*2, h: 90 - hit*2 };
+                let eBox = { x: e.x + hit, y: e.y + hit, w: 180 - hit*2, h: 90 - hit*2 };
+
+                // Aviso de proximidad (Si el coche está a menos de 300px)
+                if (e.x - (150 + 180) < 300 && e.x > 150 && Math.abs(e.y - s.py) < 100) {
+                    showAlert = true;
+                }
+
+                if (pBox.x < eBox.x + eBox.w && pBox.x + pBox.w > eBox.x && pBox.y < eBox.y + eBox.h && pBox.y + pBox.h > eBox.y) {
+                    gameOver("¡HAS XOCAT! 💥");
+                }
+                return e.x > -200;
+            });
+            document.getElementById("alert-box").style.display = showAlert ? "block" : "none";
+
+            // LÍNEA DE META (Aparece al final)
+            if (s.dist >= s.targetDist - 2000 && s.finishLineX === -1) {
+                s.finishLineX = canvas.width + 500;
+            }
+            if (s.finishLineX !== -1) {
+                s.finishLineX -= (s.speed * 4);
+                // Si cruzas la meta
+                if (s.finishLineX < 150) {
+                    // CONDICIÓN MÓVIL: Si cruzas con el móvil abierto, pierdes
+                    if (s.mobileActive) {
+                        gameOver("HAS ARRIBAT PERÒ ESTAVES MIRANT EL MÒBIL... ACCIDENT! 💀");
+                    } else {
+                        gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+                    }
+                }
+            }
+
+            // Multas
+            if (Math.floor(s.speed * 10) > s.currentLimit) gameOver(`MULTA! Límit: ${s.currentLimit} km/h`);
+        }
+
+        function gameOver(msg, win = false) {
+            s.over = true;
+            document.getElementById("status-title").innerText = win ? "ENHORABONA!" : "FI DEL JOC";
+            document.getElementById("status-desc").innerText = msg;
+            document.getElementById("ui-overlay").style.display = "flex";
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Fondo
+            if (img.bg.complete) {
+                ctx.drawImage(img.bg, -s.bgX, 0, canvas.width, canvas.height);
+                ctx.drawImage(img.bg, canvas.width - s.bgX, 0, canvas.width, canvas.height);
+            }
+
+            // Dibujar Línea de Meta (Cuadros blancos y negros)
+            if (s.finishLineX !== -1) {
+                ctx.fillStyle = "white";
+                ctx.fillRect(s.finishLineX, 150, 60, canvas.height - 300);
+                ctx.fillStyle = "black";
+                for(let i=0; i<20; i++) {
+                    ctx.fillRect(s.finishLineX + (i%2?0:30), 150 + (i*30), 30, 30);
+                }
+            }
+
+            s.signs.forEach(sign => {
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(sign.x, sign.y, 35, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "red"; ctx.lineWidth = 6; ctx.stroke();
+                ctx.fillStyle = "black"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+                ctx.fillText(sign.limit, sign.x, sign.y + 8);
+                sign.x -= (s.speed * 4);
+            });
+
+            s.enemies.forEach(e => ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h));
+            ctx.drawImage(img.player, 150, s.py, 180, 90);
+
+            // UI
+            ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "left";
+            ctx.fillText(`Distància: ${Math.floor(s.dist/1000)}km / ${Math.floor(s.targetDist/1000)}km`, 20, canvas.height - 20);
+        }
+
+        function loop() { update(); draw(); requestAnimationFrame(loop); }
+        window.onload = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initGame(); loop(); };
+    </script>
+</body>
+</html>

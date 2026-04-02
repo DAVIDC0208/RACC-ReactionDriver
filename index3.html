@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RACC - Reaction Driver | NIVELL 3 (EXTREM)</title>
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; }
+        canvas { display: block; }
+        
+        /* Alerta de proximidad extrema */
+        #alert-box { 
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(192, 57, 43, 0.9); color: white; padding: 15px 30px;
+            border: 2px solid #f1c40f; border-radius: 10px; font-weight: bold; 
+            display: none; z-index: 200; font-size: 22px;
+            animation: shake 0.2s infinite;
+        }
+        @keyframes shake { 0% { margin-left: 0; } 25% { margin-left: 5px; } 50% { margin-left: -5px; } 100% { margin-left: 0; } }
+
+        #ui-overlay, #pause-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: none; flex-direction: column; justify-content: center;
+            align-items: center; background: rgba(0,0,0,0.95); color: white; z-index: 100;
+            text-align: center;
+        }
+        .level-3-tag { color: #e74c3c; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+        .btn { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 8px; border: none; background: #c0392b; color: white; font-weight: bold; margin-top: 10px; width: 250px; }
+        .btn-secondary { background: #2c3e50; }
+        
+        #mobile-container {
+            position: absolute; bottom: -500px; right: 30px; 
+            width: 260px; height: 400px; background: #d1d1d1; border: 10px solid #222;
+            border-radius: 35px; z-index: 50; transition: bottom 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            box-shadow: -10px 0 60px rgba(231, 76, 60, 0.4); overflow: hidden; display: flex; flex-direction: column;
+        }
+        #mobile-container.active { bottom: 30px; }
+        .chat-header { background: #128c7e; color: white; padding: 12px; font-size: 14px; font-weight: bold; }
+        .chat-body { flex: 1; padding: 10px; background: #e5ddd5; overflow-y: hidden; }
+        .message { background: #dcf8c6; padding: 10px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: #000; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+        .close-mobile { background: #000; color: #fff; border: none; padding: 15px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div id="alert-box">⚠️ PERILL: COTXE MOLT A PROP!</div>
+
+    <div id="ui-overlay">
+        <p class="level-3-tag">Mode Extrem</p>
+        <h1 id="status-title">NIVELL SUPERAT!</h1>
+        <p id="status-desc"></p>
+        <button onclick="initGame()" class="btn">TORNAR A INTENTAR</button>
+        <button onclick="goToMenu()" class="btn btn-secondary">MENÚ DE JOCS</button>
+    </div>
+
+    <div id="pause-overlay">
+        <h1 style="color: #e74c3c;">JOC ATURAT</h1>
+        <button onclick="togglePause()" class="btn">CONTINUAR</button>
+        <button onclick="goToMenu()" class="btn btn-secondary">SORTIR</button>
+    </div>
+
+    <div id="mobile-container">
+        <div class="chat-header">Emergència! 🚨</div>
+        <div class="chat-body" id="chat-v3">
+            <div class="message">ON ETS?! Necessitem que contestis ARA MATEIX! No pots ignorar això!</div>
+        </div>
+        <button class="close-mobile" onclick="closeMobile()">IGNORAR (M)</button>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        const img = { bg: new Image(), player: new Image(), enemy: new Image() };
+        img.bg.src = "images/fondo.png";
+        img.player.src = "images/coche_azul_transparente.png";
+        img.enemy.src = "images/coche_rojo_transparente.png";
+
+        let s = {
+            speed: 6, dist: 0, bgX: 0, py: 300, 
+            enemies: [], signs: [], keys: {}, 
+            over: false, paused: false,
+            spawnTimer: 0, signTimer: 0, mobileCooldown: 0,
+            currentLimit: 120, mobileActive: false,
+            targetDist: 400000, // NIVEL 3: El más largo
+            finishLineX: -1
+        };
+
+        function initGame() {
+            s.speed = 6; s.dist = 0; s.over = false; s.paused = false;
+            s.py = canvas.height / 2;
+            s.enemies = []; s.signs = [];
+            s.currentLimit = 120;
+            s.mobileActive = false;
+            s.mobileCooldown = 0;
+            s.finishLineX = -1;
+            document.getElementById("ui-overlay").style.display = "none";
+            document.getElementById("pause-overlay").style.display = "none";
+            document.getElementById("mobile-container").classList.remove("active");
+        }
+
+        function goToMenu() { window.location.href = "https://henryjoe06.github.io/racc-reaction-drive/pagina-de-juegos/index.html"; }
+        
+        function closeMobile() { 
+            s.mobileActive = false; 
+            s.mobileCooldown = 0; // Se reinicia el contador para que vuelva a salir pronto
+            document.getElementById("mobile-container").classList.remove("active");
+        }
+
+        window.onkeydown = (e) => {
+            if (e.code === "Escape") togglePause();
+            if (e.code === "KeyM") closeMobile();
+            s.keys[e.code] = true;
+        };
+        window.onkeyup = (e) => s.keys[e.code] = false;
+
+        function togglePause() {
+            if (s.over) return;
+            s.paused = !s.paused;
+            document.getElementById("pause-overlay").style.display = s.paused ? "flex" : "none";
+        }
+
+        function update() {
+            if (s.over || s.paused) return;
+
+            // Controles más pesados
+            if (s.keys["ArrowLeft"]) s.speed = Math.max(0, s.speed - 0.12);
+            if (s.keys["ArrowRight"]) s.speed = Math.min(20, s.speed + 0.08);
+            if (s.speed > 0.5) {
+                if (s.keys["ArrowUp"]) s.py -= 9;
+                if (s.keys["ArrowDown"]) s.py += 9;
+            }
+
+            s.dist += s.speed * 5;
+            s.bgX = (s.bgX + s.speed * 4) % canvas.width;
+            s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
+
+            // Lógica de Móvil Agresiva en Nivel 3
+            if (!s.mobileActive) {
+                s.mobileCooldown++;
+                if (s.mobileCooldown > 250) { // Aparece muy frecuentemente
+                    s.mobileActive = true;
+                    document.getElementById("mobile-container").classList.add("active");
+                }
+            }
+
+            // Spawn de Enemigos (Extremo: cada 100 frames)
+            if (++s.spawnTimer > 100 && s.dist < s.targetDist - 8000) { 
+                s.enemies.push({ 
+                    x: canvas.width + 200, 
+                    y: 180 + Math.random()*(canvas.height-450), 
+                    w: 180, h: 90,
+                    vExtra: Math.random() * 4 // Velocidad variable para confundir
+                });
+                s.spawnTimer = 0;
+            }
+
+            // Señales traicioneras
+            if (++s.signTimer > 500) {
+                const limits = [40, 60, 90, 120]; 
+                s.signs.push({ x: canvas.width + 100, y: 100, limit: limits[Math.floor(Math.random()*limits.length)] });
+                s.signTimer = 0;
+            }
+
+            let showAlert = false;
+            s.enemies = s.enemies.filter(e => {
+                e.x -= (s.speed * 4) + 5 + e.vExtra; 
+                
+                // Hitbox muy estricta (te chocas casi con rozar)
+                let hit = 10; 
+                let pBox = { x: 150 + hit, y: s.py + hit, w: 180 - hit*2, h: 90 - hit*2 };
+                let eBox = { x: e.x + hit, y: e.y + hit, w: 180 - hit*2, h: 90 - hit*2 };
+
+                // Alerta de proximidad agresiva
+                if (e.x - 330 < 250 && e.x > 150 && Math.abs(e.y - s.py) < 80) {
+                    showAlert = true;
+                }
+
+                if (pBox.x < eBox.x + eBox.w && pBox.x + pBox.w > eBox.x && pBox.y < eBox.y + eBox.h && pBox.y + pBox.h > eBox.y) {
+                    gameOver("COL·LISIÓ MORTAL! 💥 NIVELL 3 FALLIT");
+                }
+                return e.x > -200;
+            });
+            document.getElementById("alert-box").style.display = showAlert ? "block" : "none";
+
+            // Meta Final
+            if (s.dist >= s.targetDist - 3000 && s.finishLineX === -1) {
+                s.finishLineX = canvas.width + 500;
+            }
+            if (s.finishLineX !== -1) {
+                s.finishLineX -= (s.speed * 4);
+                if (s.finishLineX < 150) {
+                    if (s.mobileActive) {
+                        gameOver("HAS ARRIBAT... PERÒ MIRANT EL MÒBIL. ACCIDENT FINAL! 💀");
+                    } else {
+                        gameOver("HAS SUPERAT EL REPTE EXTREM! 🏁 Ets un conductor responsable.", true);
+                    }
+                }
+            }
+
+            if (Math.floor(s.speed * 10) > s.currentLimit) gameOver(`MULTA RADAR! Has superat els ${s.currentLimit} km/h`);
+        }
+
+        function gameOver(msg, win = false) {
+            s.over = true;
+            document.getElementById("status-title").innerText = win ? "MAXIMA PUNTUACIÓ!" : "ACCIDENT GRAU";
+            document.getElementById("status-desc").innerText = msg;
+            document.getElementById("ui-overlay").style.display = "flex";
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (img.bg.complete) {
+                ctx.drawImage(img.bg, -s.bgX, 0, canvas.width, canvas.height);
+                ctx.drawImage(img.bg, canvas.width - s.bgX, 0, canvas.width, canvas.height);
+            }
+
+            if (s.finishLineX !== -1) {
+                ctx.fillStyle = "white";
+                ctx.fillRect(s.finishLineX, 150, 80, canvas.height - 300);
+                ctx.fillStyle = "black";
+                for(let i=0; i<30; i++) {
+                    ctx.fillRect(s.finishLineX + (i%2?0:40), 150 + (i*30), 40, 30);
+                }
+            }
+
+            s.signs.forEach(sign => {
+                ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(sign.x, sign.y, 35, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = "red"; ctx.lineWidth = 6; ctx.stroke();
+                ctx.fillStyle = "black"; ctx.font = "bold 24px Arial"; ctx.textAlign = "center";
+                ctx.fillText(sign.limit, sign.x, sign.y + 8);
+                sign.x -= (s.speed * 4);
+            });
+
+            s.enemies.forEach(e => ctx.drawImage(img.enemy, e.x, e.y, e.w, e.h));
+            ctx.drawImage(img.player, 150, s.py, 180, 90);
+
+            // UI Nivel 3
+            ctx.fillStyle = "#e74c3c"; ctx.font = "bold 16px Arial"; ctx.textAlign = "right";
+            ctx.fillText(`PROGRESSIÓ EXTREMA: ${Math.floor((s.dist/s.targetDist)*100)}%`, canvas.width - 20, 30);
+            
+            ctx.fillStyle = "white"; ctx.font = "bold 20px Arial"; ctx.textAlign = "left";
+            ctx.fillText(`Km: ${Math.floor(s.dist/1000)} / ${Math.floor(s.targetDist/1000)}`, 20, canvas.height - 20);
+        }
+
+        function loop() { update(); draw(); requestAnimationFrame(loop); }
+        window.onload = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; initGame(); loop(); };
+    </script>
+</body>
+</html>
