@@ -27,13 +27,15 @@
         .chat-header { background: #075e54; color: white; padding: 10px; font-size: 14px; display: flex; justify-content: space-between; }
         .chat-body { flex: 1; padding: 10px; background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); background-size: cover; }
         .message { background: white; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; align-self: flex-start; max-width: 80%; box-shadow: 0 1px 1px rgba(0,0,0,0.1); color: #333; }
-        .close-mobile { background: #e74c3c; color: white; border: none; padding: 12px; cursor: pointer; font-weight: bold; }
+        .close-mobile { background: #e74c3c; color: white; border: none; padding: 12px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+        #key-hint { font-size: 18px; color: #ffeb3b; display: block; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div id="ui-overlay">
         <h1 id="status-title">NIVELL SUPERAT!</h1>
         <p id="status-desc"></p>
+        <button id="next-level-btn" onclick="goToMenu()" class="btn" style="display:none; background: #f39c12;">ANAR AL SEGÜENT NIVELL</button>
         <button onclick="initGame()" class="btn">TORNAR A PROVAR</button>
         <button onclick="goToMenu()" class="btn btn-secondary">MENÚ DE JOCS</button>
     </div>
@@ -51,9 +53,12 @@
         </div>
         <div class="chat-body">
             <div class="message">On ets? Recorda comprar el pa! 🥖</div>
-            <div class="message">Respon ràpid que és urgent!</div>
+            <div class="message">Respon ràpid!</div>
         </div>
-        <button class="close-mobile" onclick="closeMobile()">TANCAR MÒBIL (M)</button>
+        <button class="close-mobile" onclick="closeMobile()">
+            TANCAR MÒBIL
+            <span id="key-hint">PREM [?]</span>
+        </button>
     </div>
 
     <canvas id="gameCanvas"></canvas>
@@ -67,6 +72,8 @@
         img.player.src = "images/coche_azul_transparente.png";
         img.enemy.src = "images/coche_rojo_transparente.png";
 
+        const CURRENT_LEVEL_ID = 1; 
+
         let s = {
             speed: 5, dist: 0, bgX: 0, py: 300, 
             enemies: [], signs: [], keys: {}, 
@@ -74,10 +81,16 @@
             spawnTimer: 0, signTimer: 0, mobileTimer: 0,
             currentLimit: 120, 
             mobileActive: false,
-            mobilesSpawned: 0, // Quants mòbils han sortit
-            mobilesClosed: 0,  // Quants n'ha tancat
+            mobilesSpawned: 0,
+            mobilesClosed: 0,
+            currentMobileKey: "", // Tecla aleatoria actual
             needleAng: Math.PI
         };
+
+        function getRandomKey() {
+            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            return alphabet[Math.floor(Math.random() * alphabet.length)];
+        }
 
         function initGame() {
             s.speed = 5; 
@@ -89,8 +102,10 @@
             s.mobileActive = false;
             s.mobilesSpawned = 0;
             s.mobilesClosed = 0;
+            s.currentMobileKey = "";
             document.getElementById("ui-overlay").style.display = "none";
             document.getElementById("pause-overlay").style.display = "none";
+            document.getElementById("next-level-btn").style.display = "none";
             document.getElementById("mobile-container").classList.remove("active");
         }
 
@@ -101,7 +116,7 @@
         function closeMobile() {
             if (s.mobileActive) {
                 s.mobileActive = false;
-                s.mobilesClosed++; // Sumem un tancament amb èxit
+                s.mobilesClosed++;
                 document.getElementById("mobile-container").classList.remove("active");
             }
         }
@@ -112,9 +127,20 @@
             document.getElementById("pause-overlay").style.display = s.paused ? "flex" : "none";
         }
 
+        function unlockNextLevel() {
+            const nextLevel = CURRENT_LEVEL_ID + 1;
+            localStorage.setItem(`level_${nextLevel}_unlocked`, "true");
+            document.getElementById("next-level-btn").style.display = "block";
+        }
+
         window.onkeydown = (e) => {
             if (e.code === "Escape") togglePause();
-            if (e.code === "KeyM" && s.mobileActive) closeMobile();
+            
+            // Si el móvil está activo, solo se cierra con la tecla asignada
+            if (s.mobileActive && e.key.toUpperCase() === s.currentMobileKey) {
+                closeMobile();
+            }
+            
             s.keys[e.code] = true;
         };
         window.onkeyup = (e) => s.keys[e.code] = false;
@@ -146,13 +172,14 @@
             s.bgX = (s.bgX + s.speed * 7) % canvas.width;
             s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
 
-            // Lògica d'aparició de mòbils (poden sortir diversos durant el camí)
+            // Lógica de aparición de móvil con TECLA RANDOM
             if (!s.mobileActive && s.dist < 90000) { 
                 s.mobileTimer++;
-                // Apareix un mòbil cada cert temps de forma aleatòria
                 if (s.mobileTimer > 800) { 
                     s.mobileActive = true;
                     s.mobilesSpawned++;
+                    s.currentMobileKey = getRandomKey(); // Asignar tecla nueva
+                    document.getElementById("key-hint").innerText = `PREM LA TECLA [${s.currentMobileKey}]`;
                     document.getElementById("mobile-container").classList.add("active");
                     s.mobileTimer = 0; 
                 }
@@ -189,11 +216,10 @@
                 return sign.x > -100;
             });
 
-            // FINAL DEL JOC
             if (s.dist >= 100000) {
-                // Comprovem si ha tancat TOTS els mòbils que han aparegut
                 if (s.mobilesClosed >= s.mobilesSpawned && !s.mobileActive) {
                     gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+                    unlockNextLevel();
                 } else {
                     gameOver("FI DEL JOC: No has gestionat totes les distraccions a temps!");
                 }
@@ -231,7 +257,6 @@
             ctx.fillStyle = "white"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center";
             ctx.fillText(`${Math.floor((s.dist/100000)*100)}% COMPLETAT`, canvas.width/2, 45);
 
-            // Icona de mòbils pendents
             ctx.fillStyle = "white"; ctx.font = "bold 16px Arial"; ctx.textAlign = "right";
             ctx.fillText(`Mòbils tancats: ${s.mobilesClosed}/${s.mobilesSpawned}`, canvas.width - 30, 45);
 
