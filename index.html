@@ -73,8 +73,9 @@
             over: false, paused: false,
             spawnTimer: 0, signTimer: 0, mobileTimer: 0,
             currentLimit: 120, 
-            mobileActive: false, 
-            mobileClosed: false, // Rastreja si s'ha tancat durant la partida
+            mobileActive: false,
+            mobilesSpawned: 0, // Quants mòbils han sortit
+            mobilesClosed: 0,  // Quants n'ha tancat
             needleAng: Math.PI
         };
 
@@ -86,7 +87,8 @@
             s.currentLimit = 120;
             s.spawnTimer = 0; s.signTimer = 0; s.mobileTimer = 0;
             s.mobileActive = false;
-            s.mobileClosed = false;
+            s.mobilesSpawned = 0;
+            s.mobilesClosed = 0;
             document.getElementById("ui-overlay").style.display = "none";
             document.getElementById("pause-overlay").style.display = "none";
             document.getElementById("mobile-container").classList.remove("active");
@@ -97,9 +99,11 @@
         }
 
         function closeMobile() {
-            s.mobileActive = false;
-            s.mobileClosed = true; // Marquem que s'ha tancat
-            document.getElementById("mobile-container").classList.remove("active");
+            if (s.mobileActive) {
+                s.mobileActive = false;
+                s.mobilesClosed++; // Sumem un tancament amb èxit
+                document.getElementById("mobile-container").classList.remove("active");
+            }
         }
 
         function togglePause() {
@@ -142,13 +146,15 @@
             s.bgX = (s.bgX + s.speed * 7) % canvas.width;
             s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
 
-            // Aparició del mòbil
-            if (!s.mobileActive && !s.mobileClosed && s.dist > 1500) {
+            // Lògica d'aparició de mòbils (poden sortir diversos durant el camí)
+            if (!s.mobileActive && s.dist < 90000) { 
                 s.mobileTimer++;
-                if (s.mobileTimer > 300) { 
+                // Apareix un mòbil cada cert temps de forma aleatòria
+                if (s.mobileTimer > 800) { 
                     s.mobileActive = true;
+                    s.mobilesSpawned++;
                     document.getElementById("mobile-container").classList.add("active");
-                    s.mobileTimer = -2000; 
+                    s.mobileTimer = 0; 
                 }
             }
 
@@ -183,14 +189,13 @@
                 return sign.x > -100;
             });
 
-            // Condició de final de recorregut
+            // FINAL DEL JOC
             if (s.dist >= 100000) {
-                if (s.mobileClosed) {
-                    // Si ha arribat però ha tancat el mòbil, perd
-                    gameOver("HAS PERDUT! Has tancat el mòbil abans d'arribar. Calia mantenir la distracció!");
-                } else {
-                    // Si ha arribat amb el mòbil obert (o sense haver-lo tancat), guanya
+                // Comprovem si ha tancat TOTS els mòbils que han aparegut
+                if (s.mobilesClosed >= s.mobilesSpawned && !s.mobileActive) {
                     gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+                } else {
+                    gameOver("FI DEL JOC: No has gestionat totes les distraccions a temps!");
                 }
             }
         }
@@ -225,6 +230,10 @@
             ctx.fillStyle = "#3498db"; ctx.fillRect(bX+2, 27, (bW-4)*(s.dist/100000), 26);
             ctx.fillStyle = "white"; ctx.font = "bold 13px Arial"; ctx.textAlign = "center";
             ctx.fillText(`${Math.floor((s.dist/100000)*100)}% COMPLETAT`, canvas.width/2, 45);
+
+            // Icona de mòbils pendents
+            ctx.fillStyle = "white"; ctx.font = "bold 16px Arial"; ctx.textAlign = "right";
+            ctx.fillText(`Mòbils tancats: ${s.mobilesClosed}/${s.mobilesSpawned}`, canvas.width - 30, 45);
 
             ctx.fillStyle = "white"; ctx.beginPath(); ctx.arc(60, 60, 35, 0, Math.PI*2); ctx.fill();
             ctx.strokeStyle = "red"; ctx.lineWidth = 5; ctx.stroke();
