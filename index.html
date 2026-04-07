@@ -72,7 +72,10 @@
             enemies: [], signs: [], keys: {}, 
             over: false, paused: false,
             spawnTimer: 0, signTimer: 0, mobileTimer: 0,
-            currentLimit: 120, mobileActive: false, needleAng: Math.PI
+            currentLimit: 120, 
+            mobileActive: false, 
+            mobileClosed: false, // Rastreja si s'ha tancat durant la partida
+            needleAng: Math.PI
         };
 
         function initGame() {
@@ -83,18 +86,19 @@
             s.currentLimit = 120;
             s.spawnTimer = 0; s.signTimer = 0; s.mobileTimer = 0;
             s.mobileActive = false;
+            s.mobileClosed = false;
             document.getElementById("ui-overlay").style.display = "none";
             document.getElementById("pause-overlay").style.display = "none";
             document.getElementById("mobile-container").classList.remove("active");
         }
 
-        // Función para ir al menú
         function goToMenu() {
             window.location.href = "https://henryjoe06.github.io/racc-reaction-drive/pagina-de-juegos/index.html";
         }
 
         function closeMobile() {
             s.mobileActive = false;
+            s.mobileClosed = true; // Marquem que s'ha tancat
             document.getElementById("mobile-container").classList.remove("active");
         }
 
@@ -106,7 +110,7 @@
 
         window.onkeydown = (e) => {
             if (e.code === "Escape") togglePause();
-            if (e.code === "KeyM") closeMobile();
+            if (e.code === "KeyM" && s.mobileActive) closeMobile();
             s.keys[e.code] = true;
         };
         window.onkeyup = (e) => s.keys[e.code] = false;
@@ -138,7 +142,8 @@
             s.bgX = (s.bgX + s.speed * 7) % canvas.width;
             s.py = Math.max(140, Math.min(canvas.height - 240, s.py));
 
-            if (!s.mobileActive && s.dist > 1500) {
+            // Aparició del mòbil
+            if (!s.mobileActive && !s.mobileClosed && s.dist > 1500) {
                 s.mobileTimer++;
                 if (s.mobileTimer > 300) { 
                     s.mobileActive = true;
@@ -178,7 +183,16 @@
                 return sign.x > -100;
             });
 
-            if (s.dist >= 100000) gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+            // Condició de final de recorregut
+            if (s.dist >= 100000) {
+                if (s.mobileClosed) {
+                    // Si ha arribat però ha tancat el mòbil, perd
+                    gameOver("HAS PERDUT! Has tancat el mòbil abans d'arribar. Calia mantenir la distracció!");
+                } else {
+                    // Si ha arribat amb el mòbil obert (o sense haver-lo tancat), guanya
+                    gameOver("HAS ARRIBAT A DESTINACIÓ! 🏁", true);
+                }
+            }
         }
 
         function gameOver(msg, win = false) {
